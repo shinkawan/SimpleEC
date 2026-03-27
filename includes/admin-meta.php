@@ -1,0 +1,622 @@
+<?php
+/**
+ * Admin Meta and Bulk Tools for Simple EC (Japanese)
+ */
+
+if (!defined('ABSPATH')) {
+	exit;
+}
+
+/**
+ * Add Meta Box: Photo Details
+ */
+function photo_purchase_add_meta_boxes()
+{
+	add_meta_box(
+		'photo_purchase_details',
+		__('商品の詳細設定', 'photo-purchase'),
+		'photo_purchase_meta_box_callback',
+		'photo_product',
+		'normal',
+		'high'
+	);
+}
+add_action('add_meta_boxes', 'photo_purchase_add_meta_boxes');
+
+/**
+ * Meta Box Callback
+ */
+function photo_purchase_meta_box_callback($post)
+{
+	wp_nonce_field('photo_purchase_save_meta', 'photo_purchase_nonce');
+
+	// Prices
+	$price_digital = get_post_meta($post->ID, '_photo_price_digital', true);
+	$price_l = get_post_meta($post->ID, '_photo_price_l', true);
+	$price_2l = get_post_meta($post->ID, '_photo_price_2l', true);
+
+	$enable_digital = get_option('photo_pp_enable_digital_sales', '1');
+
+	// Legacy support - only if explicitly enabled
+	if (!$price_digital && $enable_digital === '1') {
+		$price_digital = get_post_meta($post->ID, '_photo_price', true);
+		if (!$price_digital)
+			$price_digital = 0;
+	}
+	if (!$price_l)
+		$price_l = 0;
+	if (!$price_2l)
+		$price_2l = 0;
+
+	$high_res_file = get_post_meta($post->ID, '_photo_high_res_file', true);
+	$high_res_id = get_post_meta($post->ID, '_photo_high_res_id', true);
+	$gallery_ids = get_post_meta($post->ID, '_ec_gallery_ids', true);
+
+	echo '<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;">';
+
+	if ($enable_digital === '1') {
+		echo '<div>';
+		echo '<label for="photo_price_digital"><strong>' . __('ダウンロード版 (円)', 'photo-purchase') . '</strong></label><br>';
+		echo '<input type="number" id="photo_price_digital" name="photo_price_digital" value="' . esc_attr($price_digital) . '" step="1" style="width:100%;">';
+		echo '<p class="description">0円にすると販売されません</p>';
+		echo '</div>';
+	}
+
+	echo '<div>';
+	echo '<label for="photo_price_l"><strong>' . __('価格 (配送品) (円)', 'photo-purchase') . '</strong></label><br>';
+	echo '<input type="number" id="photo_price_l" name="photo_price_l" value="' . esc_attr($price_l) . '" step="1" style="width:100%;">';
+	echo '<p class="description">0円にすると配送販売されません</p>';
+	echo '</div>';
+
+	echo '<div>';
+	$tax_type = get_post_meta($post->ID, '_photo_tax_type', true) ?: 'standard';
+	echo '<label for="photo_tax_type"><strong>' . __('適用税率', 'photo-purchase') . '</strong></label><br>';
+	echo '<select id="photo_tax_type" name="photo_tax_type" style="width:100%;">';
+	echo '<option value="standard" ' . selected($tax_type, 'standard', false) . '>標準税率 (10%)</option>';
+	echo '<option value="reduced" ' . selected($tax_type, 'reduced', false) . '>軽減税率 (8%)</option>';
+	echo '</select>';
+	echo '<p class="description">食品などは軽減税率を適用してください</p>';
+	echo '</div>';
+
+	// Sold Out Setting
+	$is_sold_out = get_post_meta($post->ID, '_photo_is_sold_out', true);
+	$manage_stock = get_post_meta($post->ID, '_photo_manage_stock', true);
+	$stock_qty = get_post_meta($post->ID, '_photo_stock_qty', true);
+
+	echo '<div>';
+	echo '<label for="photo_is_sold_out"><strong>' . __('売り切れ設定', 'photo-purchase') . '</strong></label><br>';
+	echo '<label><input type="checkbox" id="photo_is_sold_out" name="photo_is_sold_out" value="1" ' . checked($is_sold_out, '1', false) . '> ' . __('売り切れにする', 'photo-purchase') . '</label>';
+	echo '<p class="description">チェックを入れるとフロントエンドで「売り切れ」と表示され、購入できなくなります。</p>';
+
+	echo '<hr style="margin: 10px 0; border: 0; border-top: 1px dashed #eee;">';
+	echo '<label for="photo_manage_stock"><strong>' . __('在庫管理', 'photo-purchase') . '</strong></label><br>';
+	echo '<label><input type="checkbox" id="photo_manage_stock" name="photo_manage_stock" value="1" ' . checked($manage_stock, '1', false) . '> ' . __('在庫管理を行う', 'photo-purchase') . '</label><br>';
+	echo '<label>' . __('在庫数', 'photo-purchase') . ': <input type="number" name="photo_stock_qty" value="' . esc_attr($stock_qty) . '" min="0" style="width:80px;"></label>';
+	echo '</div>';
+
+	echo '<input type="hidden" name="photo_price_2l" value="' . esc_attr($price_2l) . '">';
+
+	echo '</div>'; // End grid
+
+	$is_subscription = get_post_meta($post->ID, '_photo_is_subscription', true);
+	$sub_requires_shipping = get_post_meta($post->ID, '_photo_sub_requires_shipping', true);
+	$sub_price = get_post_meta($post->ID, '_photo_price_subscription', true);
+	$sub_interval = get_post_meta($post->ID, '_photo_sub_interval', true) ?: 'month';
+	$sub_interval_count = get_post_meta($post->ID, '_photo_sub_interval_count', true) ?: '1';
+
+	echo '<hr style="margin: 20px 0;">';
+	echo '<div style="background: #f0f7ff; padding: 15px; border-radius: 8px; border: 1px solid #c2e0ff;">';
+	echo '<h4 style="margin-top:0;"><span class="dashicons dashicons-update" style="vertical-align: middle;"></span> ' . __('サブスクリプション（継続課金）設定', 'photo-purchase') . '</h4>';
+	echo '<div style="display: flex; gap: 20px; align-items: flex-start; flex-direction: column;">';
+	
+	echo '<div>';
+	echo '<label><input type="checkbox" id="photo_is_subscription" name="photo_is_subscription" value="1" ' . checked($is_subscription, '1', false) . '> <strong>' . __('この商品をサブスクリプションにする', 'photo-purchase') . '</strong></label>';
+	echo '</div>';
+
+	echo '<div class="sub-fields" style="' . ($is_subscription === '1' ? '' : 'display:none;') . '">';
+	echo '<div style="margin-bottom:10px;">';
+	echo '<label><input type="checkbox" name="photo_sub_requires_shipping" value="1" ' . checked($sub_requires_shipping, '1', false) . '> <strong>' . __('配送が必要な商品 (定期購入)', 'photo-purchase') . '</strong></label>';
+	echo '<p class="description" style="margin-left:25px;">チェックを入れると、チェックアウト時に住所登録が必須になります。</p>';
+	echo '</div>';
+	echo '<div>';
+	echo '<span>価格: <input type="number" name="photo_price_subscription" value="' . esc_attr($sub_price) . '" style="width:100px;"> 円 / </span>';
+	echo ' <span>サイクル: <input type="number" name="photo_sub_interval_count" value="' . esc_attr($sub_interval_count) . '" style="width:50px;" min="1"> ';
+	echo '<select name="photo_sub_interval">';
+	echo '<option value="day" ' . selected($sub_interval, 'day', false) . '>日</option>';
+	echo '<option value="week" ' . selected($sub_interval, 'week', false) . '>週</option>';
+	echo '<option value="month" ' . selected($sub_interval, 'month', false) . '>月</option>';
+	echo '<option value="year" ' . selected($sub_interval, 'year', false) . '>年</option>';
+	echo '</select> ごとに課金</span>';
+	echo '</div>';
+
+	echo '</div>';
+	echo '<p class="description">サブスクリプションを有効にすると、Stripe Checkout画面で継続課金として処理されます。</p>';
+	echo '</div>';
+
+	if ($enable_digital === '1') {
+		echo '<hr style="margin: 20px 0;">';
+
+		echo '<p>';
+		echo '<label for="photo_high_res_file"><strong>' . __('ダウンロード用ファイル', 'photo-purchase') . '</strong></label><br>';
+		echo '<input type="text" id="photo_high_res_file" name="photo_high_res_file" value="' . esc_attr($high_res_file) . '" style="width:70%;" readonly>';
+		echo '<input type="hidden" id="photo_high_res_id" name="photo_high_res_id" value="' . esc_attr($high_res_id) . '">';
+		echo ' <button type="button" class="button photo_purchase_upload_button">' . __('ファイルを選択', 'photo-purchase') . '</button>';
+		echo '</p>';
+	}
+
+	echo '<hr style="margin: 20px 0;">';
+	echo '<p><strong>' . __('商品ギャラリー (サブ画像)', 'photo-purchase') . '</strong></p>';
+	echo '<div id="ec_gallery_container" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; border: 1px dashed #ccc; padding: 10px; min-height: 100px; background: #f9f9f9;">';
+	if ($gallery_ids) {
+		$ids = explode(',', $gallery_ids);
+		foreach ($ids as $id) {
+			$url = wp_get_attachment_thumb_url($id);
+			if ($url) {
+				echo '<div class="gallery-item" data-id="' . $id . '" style="position:relative; width:80px; height:80px; border:1px solid #ddd; background:#fff; padding:2px;">';
+				echo '<img src="' . $url . '" style="width:100%; height:100%; object-fit:cover; cursor:move;">';
+				echo '<button type="button" class="remove-gallery-item" style="position:absolute; top:-5px; right:-5px; background:#f00; color:#fff; border:none; border-radius:50%; width:18px; height:18px; font-size:12px; cursor:pointer; display:flex; align-items:center; justify-content:center;">&times;</button>';
+				echo '</div>';
+			}
+		}
+	}
+	echo '</div>';
+	echo '<input type="hidden" name="ec_gallery_ids" id="ec_gallery_ids" value="' . esc_attr($gallery_ids) . '">';
+	echo '<button type="button" class="button" id="ec_select_gallery_button">' . __('ギャラリー画像を追加', 'photo-purchase') . '</button>';
+	echo '<p class="description">画像をクリックしてドラッグすると並び替えができます。</p>';
+
+	// --- Custom Options Consolidated (v6) ---
+	$custom_options = get_post_meta($post->ID, '_photo_custom_options', true);
+	if (!is_array($custom_options)) $custom_options = array();
+	
+	echo '<hr style="margin: 30px 0 15px;">';
+	
+	echo '<fieldset style="border: 1px solid #ccc; padding: 15px; border-radius: 5px; margin-bottom: 20px; background: #fdfdfd;">';
+	echo '<legend style="padding: 0 10px; font-weight: bold; font-size: 14px; color: #333;">' . __('商品オプション設定', 'photo-purchase') . '</legend>';
+	echo '<p class="description" style="margin-top:0;">' . __('商品の選択項目（サイズ、カラー、ギフトラッピング等）を設定します。<br>ラジオボタンにする場合は同じグループ名（例：サイズ）を設定し、個別に選択させる（複数可）場合はグループ名を空にするか個別に設定してください。', 'photo-purchase') . '</p>';
+	
+	echo '<div id="ec_options_container" style="margin-bottom: 10px;">';
+	foreach ($custom_options as $index => $opt) {
+		$type = $opt['type'] ?? 'radio';
+		$group = $opt['group'] ?? '';
+		$required = $opt['required'] ?? '0';
+		$category = $opt['category'] ?? 'attribute';
+		echo photo_purchase_render_option_row_v5($opt['name'], $opt['price'], $type, $group, $category, $required);
+	}
+	echo '</div>';
+	echo '<button type="button" class="button ec-add-opt-v5">' . __('オプション項目を追加', 'photo-purchase') . '</button>';
+	echo '</fieldset>';
+	
+	?>
+	<script>
+		jQuery(document).ready(function ($) {
+			$('.ec-add-opt-v5').click(function() {
+				var container = $('#ec_options_container');
+				var cat = 'attribute'; 
+				var defType = 'radio';
+				var isRequired = false;
+				
+				var row = '<div class="custom-option-row" style="display: flex; gap: 10px; margin-bottom: 5px; align-items: center; background: #fff; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">' +
+					'<input type="hidden" name="ec_opt_category[]" value="' + cat + '">' +
+					'<div style="flex:2;">' +
+					'<label style="font-size:11px; color:#666;">グループ名 (例: サイズ)</label><br>' +
+					'<input type="text" name="ec_opt_group[]" value="" placeholder="グループ名" style="width:100%;">' +
+					'</div>' +
+					'<div style="flex:3;">' +
+					'<label style="font-size:11px; color:#666;">オプション名 (例: Lサイズ)</label><br>' +
+					'<input type="text" name="ec_opt_name[]" value="" placeholder="名称" style="width:100%;">' +
+					'</div>' +
+					'<div style="width:100px;">' +
+					'<label style="font-size:11px; color:#666;">追加価格</label><br>' +
+					'<input type="number" name="ec_opt_price[]" value="0" placeholder="価格" style="width:70px;"> 円' +
+					'</div>' +
+					'<div style="width:120px;">' +
+					'<label style="font-size:11px; color:#666;">形式</label><br>' +
+					'<select name="ec_opt_type[]" style="width:100%;">' +
+					'<option value="radio" ' + (defType === 'radio' ? 'selected' : '') + '>単一 (Radio)</option>' +
+					'<option value="checkbox" ' + (defType === 'checkbox' ? 'selected' : '') + '>複数 (Check)</option>' +
+					'</select>' +
+					'</div>' +
+					'<div style="width:60px;">' +
+					'<label style="font-size:11px; color:#666;">必須</label><br>' +
+					'<input type="checkbox" name="ec_opt_required_check[]" value="1" ' + (isRequired ? 'checked' : '') + ' class="ec-opt-req-proxy">' +
+					'<input type="hidden" name="ec_opt_required[]" value="' + (isRequired ? '1' : '0') + '" class="ec-opt-req-hidden">' +
+					'</div>' +
+					'<button type="button" class="remove-opt button" style="color:red; align-self:flex-end;">&times;</button>' +
+					'</div>';
+				container.append(row);
+			});
+			$(document).on('change', '.ec-opt-req-proxy', function() {
+				$(this).siblings('.ec-opt-req-hidden').val($(this).is(':checked') ? '1' : '0');
+			});
+			$(document).on('click', '.remove-opt', function() {
+				$(this).closest('.custom-option-row').remove();
+			});
+			$('.photo_purchase_upload_button').click(function (e) {
+				e.preventDefault();
+				var frame = wp.media({
+					title: '<?php _e("ダウンロード用ファイルを選択", "photo-purchase"); ?>',
+					button: { text: '<?php _e("このファイルを使用する", "photo-purchase"); ?>' },
+					multiple: false
+				});
+				frame.on('select', function () {
+					var attachment = frame.state().get('selection').first().toJSON();
+					$('#photo_high_res_file').val(attachment.url);
+					$('#photo_high_res_id').val(attachment.id);
+				});
+				frame.open();
+			});
+
+			// Gallery Selection
+			var galleryFrame;
+			$('#ec_select_gallery_button').click(function (e) {
+				e.preventDefault();
+				if (galleryFrame) { galleryFrame.open(); return; }
+				galleryFrame = wp.media({
+					title: '<?php _e("ギャラリー画像を選択", "photo-purchase"); ?>',
+					button: { text: '<?php _e("ギャラリーに追加", "photo-purchase"); ?>' },
+					multiple: true
+				});
+				galleryFrame.on('select', function () {
+					var selection = galleryFrame.state().get('selection');
+					var currentIds = $('#ec_gallery_ids').val() ? $('#ec_gallery_ids').val().split(',') : [];
+					selection.map(function (attachment) {
+						attachment = attachment.toJSON();
+						if (currentIds.indexOf(attachment.id.toString()) === -1) {
+							currentIds.push(attachment.id);
+							$('#ec_gallery_container').append(
+								'<div class="gallery-item" data-id="' + attachment.id + '" style="position:relative; width:80px; height:80px; border:1px solid #ddd; background:#fff; padding:2px; cursor:move;">' +
+								'<img src="' + (attachment.sizes.thumbnail ? attachment.sizes.thumbnail.url : attachment.url) + '" style="width:100%; height:100%; object-fit:cover;">' +
+								'<button type="button" class="remove-gallery-item" style="position:absolute; top:-5px; right:-5px; background:#f00; color:#fff; border:none; border-radius:50%; width:18px; height:18px; font-size:12px; cursor:pointer; display:flex; align-items:center; justify-content:center;">&times;</button>' +
+								'</div>'
+							);
+						}
+					});
+					$('#ec_gallery_ids').val(currentIds.join(','));
+				});
+				galleryFrame.open();
+			});
+
+			$(document).on('click', '.remove-gallery-item', function () {
+				var item = $(this).closest('.gallery-item');
+				var id = item.data('id').toString();
+				var currentIds = $('#ec_gallery_ids').val().split(',');
+				currentIds = currentIds.filter(function (cid) { return cid !== id; });
+				$('#ec_gallery_ids').val(currentIds.join(','));
+				item.remove();
+			});
+
+			$('#photo_is_subscription').change(function() {
+				if ($(this).is(':checked')) {
+					$('.sub-fields').fadeIn();
+				} else {
+					$('.sub-fields').fadeOut();
+				}
+			});
+
+			if ($.fn.sortable) {
+				$('#ec_gallery_container').sortable({
+					update: function () {
+						var ids = [];
+						$('#ec_gallery_container .gallery-item').each(function () {
+							ids.push($(this).data('id'));
+						});
+						$('#ec_gallery_ids').val(ids.join(','));
+					}
+				});
+			}
+		});
+	</script>
+	<?php
+}
+
+/**
+ * Save Meta Box Data
+ */
+function photo_purchase_save_meta($post_id)
+{
+	if (!isset($_POST['photo_purchase_nonce']) || !wp_verify_nonce($_POST['photo_purchase_nonce'], 'photo_purchase_save_meta')) {
+		return;
+	}
+	if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE)
+		return;
+	if (!current_user_can('edit_post', $post_id))
+		return;
+
+	if (isset($_POST['photo_price_digital'])) {
+		update_post_meta($post_id, '_photo_price_digital', sanitize_text_field($_POST['photo_price_digital']));
+	}
+	if (isset($_POST['photo_price_l'])) {
+		update_post_meta($post_id, '_photo_price_l', sanitize_text_field($_POST['photo_price_l']));
+	}
+	if (isset($_POST['photo_price_2l'])) {
+		update_post_meta($post_id, '_photo_price_2l', sanitize_text_field($_POST['photo_price_2l']));
+	}
+	if (isset($_POST['photo_tax_type'])) {
+		update_post_meta($post_id, '_photo_tax_type', sanitize_text_field($_POST['photo_tax_type']));
+	}
+	if (isset($_POST['photo_high_res_file'])) {
+		update_post_meta($post_id, '_photo_high_res_file', esc_url_raw($_POST['photo_high_res_file']));
+	}
+	if (isset($_POST['photo_high_res_id'])) {
+		update_post_meta($post_id, '_photo_high_res_id', intval($_POST['photo_high_res_id']));
+	}
+	if (isset($_POST['ec_gallery_ids'])) {
+		update_post_meta($post_id, '_ec_gallery_ids', sanitize_text_field($_POST['ec_gallery_ids']));
+	}
+
+	// Save Subscription info
+	$is_sub = isset($_POST['photo_is_subscription']) ? '1' : '0';
+	update_post_meta($post_id, '_photo_is_subscription', $is_sub);
+	
+	$sub_req_shipping = isset($_POST['photo_sub_requires_shipping']) ? '1' : '0';
+	update_post_meta($post_id, '_photo_sub_requires_shipping', $sub_req_shipping);
+	if (isset($_POST['photo_price_subscription'])) {
+		update_post_meta($post_id, '_photo_price_subscription', intval($_POST['photo_price_subscription']));
+	}
+	if (isset($_POST['photo_sub_interval'])) {
+		update_post_meta($post_id, '_photo_sub_interval', sanitize_text_field($_POST['photo_sub_interval']));
+	}
+	if (isset($_POST['photo_sub_interval_count'])) {
+		update_post_meta($post_id, '_photo_sub_interval_count', intval($_POST['photo_sub_interval_count']));
+	}
+
+	// Save Sold Out status
+	$is_sold_out = isset($_POST['photo_is_sold_out']) ? '1' : '0';
+	update_post_meta($post_id, '_photo_is_sold_out', $is_sold_out);
+
+	if (isset($_POST['photo_manage_stock'])) {
+		update_post_meta($post_id, '_photo_manage_stock', '1');
+		update_post_meta($post_id, '_photo_stock_qty', intval($_POST['photo_stock_qty']));
+	} else {
+		update_post_meta($post_id, '_photo_manage_stock', '0');
+	}
+
+	// Save Custom Options
+	if (isset($_POST['ec_opt_name']) && is_array($_POST['ec_opt_name'])) {
+		$options = array();
+		foreach ($_POST['ec_opt_name'] as $i => $name) {
+			$name = sanitize_text_field($name);
+			$price = intval($_POST['ec_opt_price'][$i]);
+			$type = sanitize_text_field($_POST['ec_opt_type'][$i] ?? 'checkbox');
+			$group = sanitize_text_field($_POST['ec_opt_group'][$i] ?? '');
+			$category = sanitize_text_field($_POST['ec_opt_category'][$i] ?? 'attribute');
+			$required = sanitize_text_field($_POST['ec_opt_required'][$i] ?? '0');
+			if (!empty($name)) {
+				$options[] = array(
+					'name' => $name,
+					'price' => $price,
+					'type' => $type,
+					'group' => $group,
+					'category' => $category,
+					'required' => $required
+				);
+			}
+		}
+		update_post_meta($post_id, '_photo_custom_options', $options);
+	} else {
+		delete_post_meta($post_id, '_photo_custom_options');
+	}
+
+	// Check for stock alert
+	if (function_exists('photo_purchase_check_stock_alert')) {
+		photo_purchase_check_stock_alert($post_id);
+	}
+}
+add_action('save_post', 'photo_purchase_save_meta');
+
+/**
+ * Add Bulk Tool Menu
+ */
+function photo_purchase_bulk_menu()
+{
+	add_submenu_page(
+		'edit.php?post_type=photo_product',
+		__('一括登録', 'photo-purchase'),
+		__('一括登録', 'photo-purchase'),
+		'manage_options',
+		'photo-bulk-upload',
+		'photo_purchase_bulk_page'
+	);
+}
+add_action('admin_menu', 'photo_purchase_bulk_menu');
+
+/**
+ * Bulk Upload Page Callback
+ */
+function photo_purchase_bulk_page()
+{
+	if (isset($_POST['photo_bulk_submit']) && check_admin_referer('photo_bulk_action', 'photo_bulk_nonce')) {
+		$image_ids = explode(',', $_POST['bulk_image_ids']);
+		$event_id = intval($_POST['photo_event_id']);
+		$price_digital = intval($_POST['default_price_digital']);
+		$price_l = intval($_POST['default_price_l']);
+		$price_2l = intval($_POST['default_price_2l']);
+		$tax_type = sanitize_text_field($_POST['default_tax_type'] ?? 'standard');
+		$count = 0;
+
+		$enable_digital_bulk = isset($_POST['enable_digital_bulk']);
+		$enable_physical_bulk = isset($_POST['enable_physical_bulk']);
+
+		foreach ($image_ids as $attachment_id) {
+			$attachment_id = intval(trim($attachment_id));
+			if (!$attachment_id)
+				continue;
+
+			$post_id = wp_insert_post(array(
+				'post_title' => get_the_title($attachment_id),
+				'post_type' => 'photo_product',
+				'post_status' => 'publish',
+			));
+
+			if ($post_id) {
+				update_post_meta($post_id, '_thumbnail_id', $attachment_id);
+				
+				$final_price_digital = $enable_digital_bulk ? $price_digital : 0;
+				$final_price_l = $enable_physical_bulk ? $price_l : 0;
+				
+				update_post_meta($post_id, '_photo_price_digital', $final_price_digital);
+				update_post_meta($post_id, '_photo_price', $final_price_digital); // Compatibility
+				update_post_meta($post_id, '_photo_price_l', $final_price_l);
+				update_post_meta($post_id, '_photo_price_2l', $price_2l);
+				update_post_meta($post_id, '_photo_tax_type', $tax_type);
+				update_post_meta($post_id, '_photo_high_res_file', wp_get_attachment_url($attachment_id));
+				update_post_meta($post_id, '_photo_high_res_id', $attachment_id);
+				if ($event_id) {
+					wp_set_post_terms($post_id, array($event_id), 'photo_event');
+				}
+				$count++;
+			}
+		}
+		echo '<div class="updated"><p>' . sprintf(__('%d 件の商品を登録しました。', 'photo-purchase'), $count) . '</p></div>';
+	}
+
+	$events = get_terms(array('taxonomy' => 'photo_event', 'hide_empty' => false));
+	?>
+	<div class="wrap">
+		<h1><?php _e('メディアライブラリから販売商品を一括登録', 'photo-purchase'); ?></h1>
+		<form method="post">
+			<?php wp_nonce_field('photo_bulk_action', 'photo_bulk_nonce'); ?>
+			<table class="form-table">
+				<tr>
+					<th><?php _e('アイテムを選択', 'photo-purchase'); ?></th>
+					<td>
+						<input type="hidden" name="bulk_image_ids" id="bulk_image_ids">
+						<div id="bulk_image_preview" style="display:flex; flex-wrap:wrap; gap:5px; margin-bottom:10px;">
+						</div>
+						<button type="button" class="button"
+							id="select_bulk_images"><?php _e('メディアライブラリから選択', 'photo-purchase'); ?></button>
+					</td>
+				</tr>
+				<tr>
+					<th><?php _e('関連付けるカテゴリー', 'photo-purchase'); ?></th>
+					<td>
+						<select name="photo_event_id">
+							<option value="0"><?php _e('なし', 'photo-purchase'); ?></option>
+							<?php foreach ($events as $event): ?>
+								<option value="<?php echo $event->term_id; ?>"><?php echo esc_html($event->name); ?></option>
+							<?php endforeach; ?>
+						</select>
+					</td>
+				</tr>
+				<tr>
+					<th><?php _e('デフォルト価格設定 (円)', 'photo-purchase'); ?></th>
+					<td>
+						<div style="display: flex; flex-direction: column; gap: 15px;">
+							<?php if (get_option('photo_pp_enable_digital_sales', '1') === '1'): ?>
+								<div style="display: flex; align-items: center; gap: 10px;">
+									<input type="checkbox" name="enable_digital_bulk" id="enable_digital_bulk" checked>
+									<label for="enable_digital_bulk"><strong>ダウンロード版を販売する</strong></label>
+									<span>価格: <input type="number" name="default_price_digital" value="300" style="width:100px;"> 円</span>
+								</div>
+							<?php endif; ?>
+							
+							<div style="display: flex; align-items: center; gap: 10px;">
+								<input type="checkbox" name="enable_physical_bulk" id="enable_physical_bulk" checked>
+								<label for="enable_physical_bulk"><strong>配送品（現物）として販売する</strong></label>
+								<span>価格: <input type="number" name="default_price_l" value="500" style="width:100px;"> 円</span>
+							</div>
+
+							<div style="margin-top:5px; border-top:1px solid #eee; padding-top:10px;">
+								<label>デフォルト税率: 
+									<select name="default_tax_type">
+										<option value="standard">標準税率 (10%)</option>
+										<option value="reduced">軽減税率 (8%)</option>
+									</select>
+								</label>
+								<input type="hidden" name="default_price_2l" value="0">
+							</div>
+						</div>
+						<p class="description">チェックを入れた形式のみ商品が生成されます。食品などの場合は「配送品」のみにチェックを入れてください。</p>
+					</td>
+				</tr>
+			</table>
+			<p>
+				<input type="submit" name="photo_bulk_submit" class="button button-primary"
+					value="<?php _e('商品を一括生成する', 'photo-purchase'); ?>">
+			</p>
+		</form>
+	</div>
+	<script>
+		jQuery(document).ready(function ($) {
+			var frame;
+			$('#select_bulk_images').click(function (e) {
+				e.preventDefault();
+				if (frame) { frame.open(); return; }
+				frame = wp.media({
+					title: '<?php _e("登録するアイテムを選択してください", "photo-purchase"); ?>',
+					button: { text: '<?php _e("これらのアイテムを処理する", "photo-purchase"); ?>' },
+					multiple: true
+				});
+				frame.on('select', function () {
+					var selection = frame.state().get('selection');
+					var ids = [];
+					$('#bulk_image_preview').empty();
+					selection.map(function (attachment) {
+						attachment = attachment.toJSON();
+						ids.push(attachment.id);
+						$('#bulk_image_preview').append('<img src="' + attachment.url + '" style="width:50px;height:50px;object-fit:cover;">');
+					});
+					$('#bulk_image_ids').val(ids.join(','));
+				});
+				frame.open();
+			});
+		});
+	</script>
+	<?php
+}
+
+function photo_purchase_admin_scripts($hook)
+{
+	wp_enqueue_media();
+	wp_enqueue_script('jquery-ui-sortable');
+	wp_enqueue_script('photo-purchase-admin', PHOTO_PURCHASE_URL . 'assets/js/admin.js', array('jquery'), PHOTO_PURCHASE_VERSION, true);
+	wp_localize_script('photo-purchase-admin', 'photoPurchaseAdmin', array(
+		'ajax_url' => admin_url('admin-ajax.php'),
+		'nonce_status' => wp_create_nonce('photo_update_order_status_ajax'),
+	));
+}
+add_action('admin_enqueue_scripts', 'photo_purchase_admin_scripts');
+
+/**
+ * Render Option Row v5 (Helper)
+ */
+function photo_purchase_render_option_row_v5($name, $price, $type, $group, $category = 'attribute', $required = '0') {
+	$html = '<div class="custom-option-row" style="display: flex; gap: 10px; margin-bottom: 5px; align-items: center; background: #fff; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">';
+	$html .= '<input type="hidden" name="ec_opt_category[]" value="' . esc_attr($category) . '">';
+	
+	// Group Name
+	$html .= '<div style="flex:2;">';
+	$html .= '<label style="font-size:11px; color:#666;">グループ名 (例: サイズ)</label><br>';
+	$html .= '<input type="text" name="ec_opt_group[]" value="' . esc_attr($group) . '" placeholder="グループ名" style="width:100%;">';
+	$html .= '</div>';
+	
+	$html .= '<div style="flex:3;">';
+	$html .= '<label style="font-size:11px; color:#666;">オプション名 (例: Lサイズ)</label><br>';
+	$html .= '<input type="text" name="ec_opt_name[]" value="' . esc_attr($name) . '" placeholder="名称" style="width:100%;">';
+	$html .= '</div>';
+	
+	$html .= '<div style="width:100px;">';
+	$html .= '<label style="font-size:11px; color:#666;">追加価格</label><br>';
+	$html .= '<input type="number" name="ec_opt_price[]" value="' . esc_attr($price) . '" placeholder="価格" style="width:70px;"> 円';
+	$html .= '</div>';
+	
+	$html .= '<div style="width:120px;">';
+	$html .= '<label style="font-size:11px; color:#666;">形式</label><br>';
+	$html .= '<select name="ec_opt_type[]" style="width:100%;">';
+	$html .= '<option value="radio" ' . selected($type, 'radio', false) . '>単一 (Radio)</option>';
+	$html .= '<option value="checkbox" ' . selected($type, 'checkbox', false) . '>複数 (Check)</option>';
+	$html .= '</select>';
+	$html .= '</div>';
+
+	// Required checkbox
+	$html .= '<div style="width:60px;">';
+	$html .= '<label style="font-size:11px; color:#666;">必須</label><br>';
+	$html .= '<input type="checkbox" name="ec_opt_required_check[]" value="1" ' . checked($required, '1', false) . ' class="ec-opt-req-proxy">';
+	$html .= '<input type="hidden" name="ec_opt_required[]" value="' . esc_attr($required) . '" class="ec-opt-req-hidden">';
+	$html .= '</div>';
+	
+	$html .= '<button type="button" class="remove-opt button" style="color:red; align-self:flex-end;">&times;</button>';
+	$html .= '</div>';
+	
+	return $html;
+}

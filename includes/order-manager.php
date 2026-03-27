@@ -1,0 +1,3306 @@
+<?php
+/**
+ * Order Manager for Simple EC (Buyer Notification Version)
+ * Handles DB operations, List Table, and Email Notifications
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+/**
+ * Calculate COD Fee based on total amount
+ */
+function photo_purchase_calculate_cod_fee($total_amount)
+{
+    $tier1_limit = intval(get_option('photo_pp_cod_tier1_limit', '10000'));
+    $tier1_fee = intval(get_option('photo_pp_cod_tier1_fee', '330'));
+    $tier2_limit = intval(get_option('photo_pp_cod_tier2_limit', '30000'));
+    $tier2_fee = intval(get_option('photo_pp_cod_tier2_fee', '440'));
+    $tier3_limit = intval(get_option('photo_pp_cod_tier3_limit', '100000'));
+    $tier3_fee = intval(get_option('photo_pp_cod_tier3_fee', '660'));
+    $max_fee = intval(get_option('photo_pp_cod_max_fee', '1100'));
+
+    if ($total_amount < $tier1_limit) {
+        return $tier1_fee;
+    } elseif ($total_amount < $tier2_limit) {
+        return $tier2_fee;
+    } elseif ($total_amount < $tier3_limit) {
+        return $tier3_fee;
+    } else {
+        return $max_fee;
+    }
+}
+
+/**
+ * Save Order to Database
+ */
+function photo_purchase_save_order($order_token, &$order_data)
+{
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'photo_orders';
+
+    $rate_standard = intval(get_option('photo_pp_tax_rate_standard', '10'));
+    $rate_reduced = intval(get_option('photo_pp_tax_rate_reduced', '8'));
+
+    $items_amount = 0;
+    $has_physical = false;
+    foreach ($order_data['items'] as &$item) {
+        $price_key = ($item['format'] === 'l_size') ? '_photo_price_l' : (($item['format'] === '2l_size') ? '_photo_price_2l' : '_photo_price_' . $item['format']);
+        if ($item['format'] === 'digital') {
+            $price = get_post_meta($item['id'], '_photo_price_digital', true);
+            if (!$price)
+                $price = get_post_meta($item['id'], '_photo_price', true);
+        } elseif ($item['format'] === 'subscription') {
+            $price = get_post_meta($item['id'], '_photo_price_subscription', true);
+            $sub_req = get_post_meta($item['id'], '_photo_sub_requires_shipping', true);
+            if ($sub_req === '1') {
+                $has_physical = true;
+            }
+        } else {
+            $price = get_post_meta($item['id'], $price_key, true);
+            $has_physical = true;
+        }
+        
+        // Determine tax rate for this item
+        $tax_type = get_post_meta($item['id'], '_photo_tax_type', true) ?: 'standard';
+        $item['tax_type'] = $tax_type;
+        $item['tax_rate'] = ($tax_type === 'reduced') ? $rate_reduced : $rate_standard;
+        
+        $base_price = intval($price);
+        $options_price = 0;
+        if (!empty($item['options']) && is_array($item['options'])) {
+            $db_options = get_post_meta($item['id'], '_photo_custom_options', true);
+            if (!is_array($db_options)) $db_options = array();
+
+            foreach ($item['options'] as &$opt) {
+                $found = false;
+                foreach ($db_options as $db_opt) {
+                    if ($db_opt['name'] === $opt['name']) {
+                        $opt['price'] = intval($db_opt['price']); // Overwrite with server price
+                        $found = true;
+                        break;
+                    }
+                }
+                if ($found) {
+                    $options_price += intval($opt['price']);
+                } else {
+                    $opt['price'] = 0; // Invalid option, set price to 0
+                }
+            }
+            unset($opt);
+        }
+        $item['price'] = $base_price; // Base price for display
+        $item['options_total'] = $options_price;
+
+        $items_amount += ($base_price + $options_price) * intval($item['qty']);
+    }
+    unset($item);
+
+    $items_json = json_encode($order_data['items']);
+
+    // Shipping calculation
+    $shipping_fee = 0;
+    if ($has_physical) {
+        $flat_rate = intval(get_option('photo_pp_shipping_flat_rate', '500'));
+        $free_threshold = intval(get_option('photo_pp_shipping_free_threshold', '5000'));
+        $pref_rates = get_option('photo_pp_shipping_prefecture_rates', array());
+        $pref = $order_data['shipping']['pref'] ?? '';
+
+        if ($free_threshold > 0 && $items_amount >= $free_threshold) {
+            $shipping_fee = 0;
+        } else {
+            $shipping_fee = ($pref && isset($pref_rates[$pref])) ? intval($pref_rates[$pref]) : $flat_rate;
+        }
+    }
+
+    // COD Fee calculation
+    $cod_fee = 0;
+    if ($order_data['method'] === 'cod' && $has_physical) {
+        $cod_fee = photo_purchase_calculate_cod_fee($items_amount + $shipping_fee);
+    }
+
+    $total_amount = $items_amount + $shipping_fee + $cod_fee;
+
+    // Apply Coupon
+    $coupon_info_data = null;
+    $discount_amount = 0;
+    if (!empty($order_data['coupon_info'])) {
+        $coupon_details = is_array($order_data['coupon_info']) ? $order_data['coupon_info'] : json_decode($order_data['coupon_info'], true);
+        
+        // Fallback: if it's just a string code, wrap it
+        if (!$coupon_details && is_string($order_data['coupon_info'])) {
+            $coupon_details = array('code' => $order_data['coupon_info']);
+        }
+        
+        if ($coupon_details && isset($coupon_details['code'])) {
+            $coupon = photo_purchase_get_valid_coupon($coupon_details['code'], $items_amount);
+            if (!is_wp_error($coupon)) {
+                if ($coupon->discount_type === 'fixed') {
+                    $discount_amount = intval($coupon->discount_amount);
+                } else {
+                    $discount_amount = floor($items_amount * ($coupon->discount_amount / 100));
+                }
+                
+                $total_amount = max(0, $total_amount - $discount_amount);
+                $coupon_info_data = array(
+                    'code' => $coupon->code,
+                    'type' => $coupon->discount_type,
+                    'amount' => $coupon->discount_amount,
+                    'applied_discount' => $discount_amount,
+                    'stripe_duration' => $coupon->stripe_duration,
+                    'stripe_months' => $coupon->stripe_months
+                );
+                // Update the array reference for downstream use
+                $order_data['coupon_info'] = json_encode($coupon_info_data);
+                $order_data['total_amount'] = $total_amount;
+            }
+        }
+    }
+    
+    // Ensure total_amount is set even if no coupon
+    if (!isset($order_data['total_amount'])) {
+        $order_data['total_amount'] = $total_amount;
+    }
+
+    // Update shipping JSON with actual fees
+    $shipping_data = $order_data['shipping'] ?? array();
+    
+    // Defensive: If shipping data is missing from array but present in POST (safety fallback)
+    if (empty($shipping_data['address']) && isset($_POST['shipping_address'])) {
+        $shipping_data['zip'] = sanitize_text_field($_POST['shipping_zip'] ?? '');
+        $shipping_data['pref'] = sanitize_text_field($_POST['shipping_pref'] ?? '');
+        $shipping_data['address'] = sanitize_textarea_field($_POST['shipping_address'] ?? '');
+    }
+    
+    $shipping_data['fee'] = $shipping_fee;
+    $shipping_data['cod_fee'] = $cod_fee;
+    $order_data['shipping'] = $shipping_data; // Update the reference
+    $shipping_json = json_encode($shipping_data);
+
+    $status = 'pending_payment';
+    if ($order_data['method'] === 'bank_transfer') {
+        $bank_name = get_option('photo_pp_bank_name');
+        $bank_branch = get_option('photo_pp_bank_branch');
+        $bank_type = get_option('photo_pp_bank_type');
+        $bank_number = get_option('photo_pp_bank_number');
+        $bank_holder = get_option('photo_pp_bank_holder');
+
+        $message = "【振込先口座のご案内】\n"; // Fixed: Initialized with = instead of .=
+        $message .= "銀行名: " . $bank_name . "\n";
+        $message .= "支店名: " . $bank_branch . "\n";
+        $message .= "口座種別: " . $bank_type . "\n";
+        $message .= "口座番号: " . $bank_number . "\n";
+        $message .= "口座名義: " . $bank_holder . "\n\n";
+        $message .= "お振込み金額: " . number_format($total_amount) . " 円\n";
+        $message .= "※お振込み手数料はお客様負担となります。\n\n";
+    }
+
+    if ($order_data['method'] === 'cod') {
+        // Server-side safety: block COD if any digital items are present
+        foreach ($order_data['items'] as $item) {
+            if ($item['format'] === 'digital') {
+                $order_data['method'] = 'bank_transfer';
+                $status = 'pending_payment';
+                
+                // Recalculate total (remove cod_fee)
+                $total_amount -= $cod_fee;
+                $cod_fee = 0;
+                $shipping_data['cod_fee'] = 0;
+                $order_data['shipping'] = $shipping_data;
+                $shipping_json = json_encode($shipping_data);
+                break;
+            }
+        }
+
+        if ($order_data['method'] === 'cod') {
+            $status = 'processing'; // Skip pending payment for COD
+        }
+    }
+
+    $result = $wpdb->insert(
+        $table_name,
+        array(
+            'order_token' => $order_token,
+            'buyer_name' => $order_data['buyer']['name'],
+            'buyer_email' => $order_data['buyer']['email'],
+            'order_items' => $items_json,
+            'shipping_info' => $shipping_json,
+            'total_amount' => $total_amount,
+            'payment_method' => $order_data['method'],
+            'status' => $status,
+            'coupon_info' => $coupon_info_data ? json_encode($coupon_info_data) : '',
+            'order_notes' => $order_data['notes'] ?? '',
+            'created_at' => current_time('mysql'),
+        ),
+        array('%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s')
+    );
+
+    if ($result) {
+        // Increment Coupon usage
+        if ($coupon_info_data) {
+            $wpdb->query($wpdb->prepare(
+                "UPDATE {$wpdb->prefix}photo_coupons SET usage_count = usage_count + 1 WHERE code = %s",
+                $coupon_info_data['code']
+            ));
+        }
+
+        // Stock Management: Decrement stock
+        foreach ($order_data['items'] as $item) {
+            $product_id = intval($item['id']);
+            $qty = intval($item['qty']);
+            $manage_stock = get_post_meta($product_id, '_photo_manage_stock', true);
+            if ($manage_stock === '1') {
+                $current_stock = intval(get_post_meta($product_id, '_photo_stock_qty', true));
+                $new_stock = max(0, $current_stock - $qty);
+                update_post_meta($product_id, '_photo_stock_qty', $new_stock);
+                
+                // Check for stock alert
+                if (function_exists('photo_purchase_check_stock_alert')) {
+                    photo_purchase_check_stock_alert($product_id);
+                }
+            }
+        }
+
+        $skip_admin_notif = in_array($order_data['method'], array('stripe', 'paypay'));
+        if (!$skip_admin_notif) {
+            photo_purchase_send_admin_notification($order_token, $order_data, $total_amount);
+        }
+
+        // We only send buyer confirmation here if it's bank transfer or COD.
+        // Stripe success should send it after payment is confirmed in payment-handler.php.
+        if ($order_data['method'] === 'bank_transfer' || $order_data['method'] === 'cod') {
+            photo_purchase_send_buyer_notification($order_token, $order_data, $total_amount);
+        }
+    }
+
+    return $result;
+}
+
+/**
+ * Send Admin Email Notification
+ */
+function photo_purchase_send_admin_notification($token, $data, $total)
+{
+    $admin_email = get_option('photo_pp_admin_notification_email', get_option('admin_email'));
+
+    $shop_name = get_option('photo_pp_seller_name');
+    if (empty($shop_name)) {
+        $shop_name = get_bloginfo('name');
+    }
+
+    $subject = '【新規注文】' . $shop_name . 'より新しい注文がありました';
+
+    $reg_num = get_option('photo_pp_tokusho_registration_number');
+    $reg_line = $reg_num ? "適格請求書発行事業者登録番号: " . $reg_num . "\n" : "";
+
+    $message = "新しい注文が入りました。\n\n";
+    $message .= "注文番号: " . $token . "\n";
+    $message .= "購入者: " . $data['buyer']['name'] . " 様\n";
+    $message .= "メール: " . $data['buyer']['email'] . "\n";
+    $message .= "合計金額: " . number_format($total) . " 円\n";
+    $message .= $reg_line;
+    
+    if (!empty($data['notes'])) {
+        $message .= "\n【注文備考】\n" . $data['notes'] . "\n";
+    }
+    
+
+    $message .= "\n【ご注文内容】\n";
+    $items_subtotal = 0;
+    foreach ($data['items'] as $item) {
+        $photo_id = intval($item['id']);
+        $format = $item['format'];
+        $qty = intval($item['qty']);
+        
+        $opt_p = 0;
+        $opt_list = "";
+        if (!empty($item['options']) && is_array($item['options'])) {
+            foreach ($item['options'] as $opt) {
+                $p = intval($opt['price'] ?? 0);
+                $opt_p += $p;
+                $p_label = ($p > 0) ? " (+" . number_format($p) . "円)" : "";
+                $g_label = (!empty($opt['group']) && !in_array($opt['group'], array('項目', 'オプション'))) ? $opt['group'] . ": " : "+ ";
+                $opt_list .= "  " . $g_label . $opt['name'] . $p_label . "\n";
+            }
+        }
+        
+        $price = isset($item['price']) ? intval($item['price']) : 0;
+        $items_subtotal += ($price + $opt_p) * $qty;
+        $fmt_label = photo_purchase_get_format_label($format);
+        
+        $message .= get_the_title($photo_id) . "\n";
+        $message .= "形式: " . $fmt_label . " / 数量: " . $qty . "\n";
+        if ($opt_list) $message .= $opt_list;
+        $message .= "\n";
+    }
+
+    $shipping_fee = isset($data['shipping']['fee']) ? intval($data['shipping']['fee']) : 0;
+    $cod_fee = isset($data['shipping']['cod_fee']) ? intval($data['shipping']['cod_fee']) : 0;
+    $pref = isset($data['shipping']['pref']) ? $data['shipping']['pref'] : '';
+
+    $message .= "商品小計: ¥" . number_format($items_subtotal) . "\n";
+    if ($shipping_fee > 0 || !empty($pref)) {
+        $message .= "送料 (" . ($pref ?: '一律') . "): ¥" . number_format($shipping_fee) . "\n";
+    }
+    if ($cod_fee > 0) {
+        $message .= "代引き手数料: ¥" . number_format($cod_fee) . "\n";
+    }
+
+    // 割引情報の表示
+    $discount_val = 0;
+    if (!empty($data['coupon_info'])) {
+        $c_info = is_array($data['coupon_info']) ? $data['coupon_info'] : json_decode($data['coupon_info'], true);
+        if (!empty($c_info['code'])) {
+            $discount_val = intval($c_info['applied_discount'] ?? 0);
+            $message .= "割引 (" . $c_info['code'] . "): -" . number_format($discount_val) . " 円\n";
+        }
+    }
+
+    $message .= "合計（税込）: ¥" . number_format($total) . "\n";
+
+    // Tax Breakdown (Invoice)
+    $discount_val = 0;
+    if (!empty($data['coupon_info'])) {
+        $c_info = is_array($data['coupon_info']) ? $data['coupon_info'] : json_decode($data['coupon_info'], true);
+        $discount_val = intval($c_info['applied_discount'] ?? 0);
+    }
+    $tax_results = photo_purchase_get_tax_breakdown($data['items'], $shipping_fee, $cod_fee, $discount_val);
+    if (!empty($tax_results)) {
+        $message .= "\n【消費税内訳】\n";
+        foreach ($tax_results as $rate => $res) {
+            $message .= $rate . "%対象額: ¥" . number_format($res['target']) . " (内消費税: ¥" . number_format($res['tax']) . ")\n";
+        }
+    }
+    $message .= "\n";
+    $method_label = 'クレジットカード';
+    if ($data['method'] === 'bank_transfer') {
+        $method_label = '銀行振込';
+    } elseif ($data['method'] === 'cod') {
+        $method_label = '代金引換';
+    } elseif ($data['method'] === 'paypay') {
+        $method_label = 'PayPay';
+    }
+    $message .= "支払い方法: " . $method_label . "\n\n";
+
+    if ($data['method'] === 'bank_transfer') {
+        $message .= "※銀行振込のため、入金確認後にステータスを更新してください。\n";
+    }
+
+    $message .= photo_purchase_get_email_footer($token, $data['buyer']['email']);
+
+    $admin_email = get_option('photo_pp_admin_notification_email', get_option('admin_email'));
+    $from_email = get_option('photo_pp_seller_email', get_option('admin_email'));
+    $headers = array('Content-Type: text/plain; charset=UTF-8', "From: $shop_name <$from_email>");
+
+    wp_mail($admin_email, $subject, $message, $headers);
+}
+
+/**
+ * Send Buyer Confirmation Email
+ */
+function photo_purchase_send_buyer_notification($token, $data, $total)
+{
+    $buyer_email = $data['buyer']['email'];
+    $shop_name = get_option('photo_pp_seller_name');
+    if (empty($shop_name)) {
+        $shop_name = get_bloginfo('name');
+    }
+
+    $subject = '【' . $shop_name . '】ご注文ありがとうございます';
+
+    $message = $data['buyer']['name'] . " 様\n\n";
+    $message .= "この度はご注文いただき、誠にありがとうございます。\n";
+    $message .= "以下の内容でご注文を承りました。\n\n";
+
+    $message .= "注文番号: " . $token . "\n";
+    $message .= "お支払い合計: " . number_format($total) . " 円\n";
+
+    if (!empty($data['notes'])) {
+        $message .= "\n【注文備考】\n" . $data['notes'] . "\n";
+    }
+
+    $method_label = 'クレジットカード';
+    if ($data['method'] === 'bank_transfer') {
+        $method_label = '銀行振込';
+    } elseif ($data['method'] === 'cod') {
+        $method_label = '代金引換';
+    } elseif ($data['method'] === 'paypay') {
+        $method_label = 'PayPay';
+    }
+    $message .= "お支払い方法: " . $method_label . "\n";
+    
+    $reg_num = get_option('photo_pp_tokusho_registration_number');
+    if ($reg_num) {
+        $message .= "適格請求書発行事業者登録番号: " . $reg_num . "\n";
+    }
+    $message .= "\n";
+
+
+    $message .= "【ご注文内容】\n";
+    $items_subtotal = 0;
+    foreach ($data['items'] as $item) {
+        $photo_id = intval($item['id']);
+        $format = $item['format'];
+        $qty = intval($item['qty']);
+        
+        $opt_p = 0;
+        $opt_list = "";
+        if (!empty($item['options']) && is_array($item['options'])) {
+            foreach ($item['options'] as $opt) {
+                $p = intval($opt['price'] ?? 0);
+                $opt_p += $p;
+                $p_label = ($p > 0) ? " (+" . number_format($p) . "円)" : "";
+                $g_label = (!empty($opt['group']) && !in_array($opt['group'], array('項目', 'オプション'))) ? $opt['group'] . ": " : "+ ";
+                $opt_list .= "  " . $g_label . $opt['name'] . $p_label . "\n";
+            }
+        }
+        
+        $price = isset($item['price']) ? intval($item['price']) : 0;
+        $items_subtotal += ($price + $opt_p) * $qty;
+        $fmt_label = photo_purchase_get_format_label($format);
+        
+        $message .= get_the_title($photo_id) . "\n";
+        $message .= "形式: " . $fmt_label . " / 数量: " . $qty . "\n";
+        if ($opt_list) $message .= $opt_list;
+        $message .= "\n";
+    }
+
+    $shipping_fee = isset($data['shipping']['fee']) ? intval($data['shipping']['fee']) : 0;
+    $cod_fee = isset($data['shipping']['cod_fee']) ? intval($data['shipping']['cod_fee']) : 0;
+    $pref = isset($data['shipping']['pref']) ? $data['shipping']['pref'] : '';
+
+    $message .= "商品小計: ¥" . number_format($items_subtotal) . "\n";
+    if ($shipping_fee > 0 || !empty($pref)) {
+        $message .= "送料 (" . ($pref ?: '一律') . "): ¥" . number_format($shipping_fee) . "\n";
+    }
+    if ($cod_fee > 0) {
+        $message .= "代引き手数料: ¥" . number_format($cod_fee) . "\n";
+    }
+    // 割引情報の表示
+    $coupon_info_data = null;
+    $coupon_raw = $data['coupon_info'] ?? '';
+    if (empty($coupon_raw) || !str_contains($coupon_raw, '{')) {
+        global $wpdb;
+        $order_db = $wpdb->get_row($wpdb->prepare("SELECT coupon_info FROM {$wpdb->prefix}photo_orders WHERE order_token = %s", $token));
+        if ($order_db && !empty($order_db->coupon_info)) { $coupon_raw = $order_db->coupon_info; }
+    }
+    if (!empty($coupon_raw)) {
+        $coupon_info_data = is_array($coupon_raw) ? $coupon_raw : json_decode($coupon_raw, true);
+    }
+    
+    $discount_val = 0;
+    if ($coupon_info_data && !empty($coupon_info_data['code'])) {
+        $discount_val = intval($coupon_info_data['applied_discount'] ?? 0);
+        $label = ($coupon_info_data['stripe_duration'] === 'forever') ? ' (継続適用)' : (($coupon_info_data['stripe_duration'] === 'repeating') ? ' (' . $coupon_info_data['stripe_months'] . 'ヶ月間)' : ' (初回のみ適用)');
+        $message .= "割引 (" . $coupon_info_data['code'] . "): -" . number_format($discount_val) . " 円" . $label . "\n";
+    }
+
+    $message .= "合計（税込）: ¥" . number_format($total) . "\n";
+
+    // Tax Breakdown (Invoice)
+    $tax_results = photo_purchase_get_tax_breakdown($data['items'], $shipping_fee, $cod_fee, $discount_val);
+    foreach ($tax_results as $rate => $res) {
+        $message .= "( " . $rate . "%対象額 ¥" . number_format($res['target']) . " / 内消費税 ¥" . number_format($res['tax']) . " )\n";
+    }
+    $message .= "\n";
+
+    if (!empty($data['shipping']['address'])) {
+        $message .= "【お届け先】\n";
+        $message .= "〒" . $data['shipping']['zip'] . "\n";
+        $message .= $data['shipping']['address'] . "\n\n";
+    }
+
+    if ($data['method'] === 'bank_transfer') {
+        $message .= "【お振込先案内】\n";
+        $message .= "銀行名: " . get_option('photo_pp_bank_name') . "\n";
+        $message .= "支店名: " . get_option('photo_pp_bank_branch') . "\n";
+        $message .= "口座種別: " . get_option('photo_pp_bank_type') . "\n";
+        $message .= "口座番号: " . get_option('photo_pp_bank_number') . "\n";
+        $message .= "口座名義: " . get_option('photo_pp_bank_holder') . "\n";
+        $message .= "振込時照会コード: " . $token . "\n";
+        $message .= "※お名前の前に、必ず上記の照会コードを入力してください。\n\n";
+    }
+
+    $message .= "ご不明な点がございましたら、お気軽にお問い合わせください。\n";
+    $message .= photo_purchase_get_email_footer($token, $data['buyer']['email']);
+
+    $from_email = get_option('photo_pp_seller_email', get_option('admin_email'));
+    $headers = array('Content-Type: text/plain; charset=UTF-8', "From: $shop_name <$from_email>");
+
+    wp_mail($data['buyer']['email'], $subject, $message, $headers);
+}
+
+/**
+ * Send Status Update Email to Buyer
+ */
+function photo_purchase_send_status_update_notification($order_id, $new_status)
+{
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'photo_orders';
+    $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $order_id));
+
+    if (!$order) {
+        return;
+    }
+
+    $shop_name = get_option('photo_pp_seller_name', get_bloginfo('name'));
+    $from_email = get_option('photo_pp_seller_email', get_option('admin_email'));
+    $headers = array('Content-Type: text/plain; charset=UTF-8', "From: $shop_name <$from_email>");
+
+    $subject = '';
+    $message = '';
+
+    if ($new_status === 'processing') {
+        if ($order->payment_method === 'cod') return;
+        $subject = '【' . $shop_name . '】お支払いの確認が完了しました';
+        $message = $order->buyer_name . " 様\n\n";
+        $message .= "お支払いの確認が完了いたしました。\n";
+        $message .= "ご注文いただいた商品の準備に入ります。発送まで今しばらくお待ちください。\n";
+    } elseif ($new_status === 'sub_shipping') {
+        $subject = '【' . $shop_name . '】商品の配送が開始されました';
+        $message = $order->buyer_name . " 様\n\n";
+        $message .= "ご注文いただいた定期購入商品の配送が開始されました。\n";
+        $message .= "今後、定期的に商品をお届けいたします。\n\n";
+        if (!empty($order->tracking_number)) {
+            $message .= "【お荷物伝票番号】\n" . $order->tracking_number . "\n\n";
+        }
+        $message .= "商品の到着まで今しばらくお待ちください。\n";
+    } elseif ($new_status === 'service_active') {
+        $subject = '【' . $shop_name . '】サービスのご利用が可能になりました';
+        $message = $order->buyer_name . " 様\n\n";
+        $message .= "ご注文いただいたサブスクリプションサービスのご利用準備が整いました。\n";
+        $message .= "本日よりサービスをご利用いただけます。\n\n";
+        
+        // Add download links if digital products exist
+        $items = json_decode($order->order_items, true);
+        $dl_links = "";
+        if ($items) {
+            foreach ($items as $item) {
+                if ($item['format'] === 'digital' || $item['format'] === 'subscription') {
+                    // Check if it's a digital subscription or has digital attachments
+                    $secure_url = photo_purchase_generate_download_url($order->order_token, $item['id']);
+                    $dl_links .= "- " . get_the_title($item['id']) . "\n  " . $secure_url . "\n";
+                }
+            }
+        }
+        if ($dl_links) {
+            $message .= "【コンテンツのご案内】\n" . $dl_links . "\n";
+            $message .= "※データの取り扱いには十分ご注意ください。\n\n";
+        }
+    } elseif ($new_status === 'completed') {
+        $subject = '【' . $shop_name . '】商品の発送が完了しました';
+        $message = $order->buyer_name . " 様\n\n";
+        $message .= "ご注文いただいた商品の準備が整いました。\n\n";
+
+        if (!empty($order->tracking_number)) {
+            $message .= "【お荷物伝票番号】\n" . $order->tracking_number . "\n\n";
+        }
+
+        // Add download links if digital products exist
+        $items = json_decode($order->order_items, true);
+        $dl_links = "";
+        if ($items) {
+            foreach ($items as $item) {
+                if ($item['format'] === 'digital') {
+                    $secure_url = photo_purchase_generate_download_url($order->order_token, $item['id']);
+                    $dl_links .= "- " . get_the_title($item['id']) . "\n  " . $secure_url . "\n";
+                }
+            }
+        }
+        if ($dl_links) {
+            $message .= "【ダウンロード版商品のご案内】\n" . $dl_links . "\n";
+            $message .= "※データの取り扱いには十分ご注意ください。\n\n";
+        }
+
+        $message .= "商品の到着まで今しばらくお待ちください。\n";
+    }
+
+    if ($subject && $message) {
+        $message .= photo_purchase_get_email_footer($order->order_token, $order->buyer_email);
+        wp_mail($order->buyer_email, $subject, $message, $headers);
+    }
+}
+
+/**
+ * Get Payment Method Label
+ */
+function photo_purchase_get_method_label($method)
+{
+    $labels = array(
+        'stripe' => 'クレジットカード',
+        'paypay' => 'PayPay',
+        'bank_transfer' => '銀行振込',
+        'cod' => '代金引換',
+    );
+    return $labels[$method] ?? $method;
+}
+
+
+/**
+ * Send cancellation email to buyer
+ */
+function photo_purchase_send_cancel_notification($order_id)
+{
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'photo_orders';
+    $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $order_id));
+
+    if (!$order) {
+        return;
+    }
+
+    $shop_name = get_option('photo_pp_seller_name', get_bloginfo('name'));
+    $from_email = get_option('photo_pp_seller_email', get_option('admin_email'));
+    $headers = array('Content-Type: text/plain; charset=UTF-8', "From: $shop_name <$from_email>");
+
+    $subject = '【' . $shop_name . '】ご注文キャンセルのお知らせ';
+    $message = $order->buyer_name . " 様\n\n";
+    $message .= "誠に恐れ入りますが、以下のご注文をキャンセル（返品受付）とさせていただきました。\n";
+    $message .= "本メールをもちまして、適格返還請求書（返還インボイス）と代えさせていただきます。\n\n";
+    $message .= "注文番号: " . $order->order_token . "\n";
+    
+    $reg_num = get_option('photo_pp_tokusho_registration_number');
+    if ($reg_num) {
+        $message .= "適格請求書発行事業者登録番号: " . $reg_num . "\n";
+    }
+    $message .= "\n";
+    
+    $message .= "【キャンセル内容】\n";
+    $message .= "返還金額合計（税込）: ¥" . number_format($order->total_amount) . "\n";
+    
+    // 税内訳
+    $c_items = json_decode($order->order_items, true);
+    $c_shipping = json_decode($order->shipping_info, true);
+    $c_coupon = 0;
+    if (!empty($order->coupon_info)) {
+        $c_coupon_data = json_decode($order->coupon_info, true);
+        $c_coupon = intval($c_coupon_data['applied_discount'] ?? 0);
+    }
+    $c_tax = photo_purchase_get_tax_breakdown($c_items, $c_shipping['fee'] ?? 0, $c_shipping['cod_fee'] ?? 0, $c_coupon);
+    if ($c_tax) {
+        $message .= "\n【消費税返還内訳】\n";
+        foreach ($c_tax as $rate => $res) {
+            $message .= $rate . "%対象額: -¥" . number_format($res['target']) . " (内消費税: -¥" . number_format($res['tax']) . ")\n";
+        }
+    }
+    $message .= "\n";
+
+    $message .= "ご不明な点がございましたら、お気軽にお問い合わせください。\n";
+    $message .= photo_purchase_get_email_footer($order->order_token, $order->buyer_email);
+
+    wp_mail($order->buyer_email, $subject, $message, $headers);
+}
+
+/**
+ * Admin Orders List Page
+ */
+function photo_purchase_orders_page()
+{
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'photo_orders';
+
+    // Ensure database table is up to date (adds missing columns like tracking_number)
+    if (function_exists('photo_purchase_create_db_table')) {
+        photo_purchase_create_db_table();
+
+        // Fail-safe: Manually check if column exists because dbDelta can be finicky
+        $column_exists = $wpdb->get_results("SHOW COLUMNS FROM `$table_name` LIKE 'tracking_number'");
+        if (empty($column_exists)) {
+            $wpdb->query("ALTER TABLE `$table_name` ADD `tracking_number` varchar(255) DEFAULT '' NOT NULL AFTER `status` ");
+        }
+    }
+
+    // Handle Update Order (POST)
+    if (isset($_POST['photo_update_order'])) {
+        check_admin_referer('photo_update_order_action');
+        $order_id = intval($_POST['order_id']);
+
+        // Get old status to check if it changed
+        $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $order_id));
+        $old_status = $order->status;
+        $old_shipping = json_decode($order->shipping_info, true);
+
+        $buyer_name = sanitize_text_field($_POST['buyer_name']);
+        $buyer_email = sanitize_email($_POST['buyer_email']);
+        $status = sanitize_text_field($_POST['status']);
+        $tracking_number = sanitize_text_field($_POST['tracking_number']);
+
+        $shipping_info = $old_shipping;
+        $shipping_info['zip'] = sanitize_text_field($_POST['shipping_zip']);
+        $shipping_info['address'] = isset($_POST['shipping_address']) ? sanitize_textarea_field($_POST['shipping_address']) : ($old_shipping['address'] ?? '');
+
+        $stripe_customer_id = sanitize_text_field($_POST['stripe_customer_id'] ?? '');
+        $stripe_subscription_id = sanitize_text_field($_POST['stripe_subscription_id'] ?? '');
+
+        $wpdb->update(
+            $table_name,
+            array(
+                'buyer_name' => $buyer_name,
+                'buyer_email' => $buyer_email,
+                'status' => $status,
+                'tracking_number' => $tracking_number,
+                'stripe_customer_id' => $stripe_customer_id,
+                'stripe_subscription_id' => $stripe_subscription_id,
+                'shipping_info' => json_encode($shipping_info),
+                'order_notes' => isset($_POST['order_notes']) ? sanitize_textarea_field($_POST['order_notes']) : '',
+            ),
+            array('id' => $order_id)
+        );
+
+        // If status changed to completed or processing, send notification
+        if ($status !== $old_status && in_array($status, array('processing', 'completed'))) {
+            photo_purchase_send_status_update_notification($order_id, $status);
+        }
+
+        // Redirect to avoid resubmission if possible, but don't exit to avoid blank pages
+        if (!headers_sent()) {
+            wp_redirect(remove_query_arg('photo_update_order'));
+            exit;
+        } else {
+            echo '<div class="updated"><p>注文情報を更新しました。</p></div>';
+        }
+    }
+
+    // Handle Bulk Action
+    if (isset($_POST['photo_bulk_action']) && $_POST['photo_bulk_action'] !== '-1' && !empty($_POST['order_ids'])) {
+        check_admin_referer('photo_bulk_orders_action');
+        $action = sanitize_text_field($_POST['photo_bulk_action']);
+        $order_ids = array_map('intval', $_POST['order_ids']);
+
+        foreach ($order_ids as $id) {
+            if ($action === 'delete') {
+                $wpdb->delete($table_name, array('id' => $id));
+            } elseif ($action === 'mark_processing') {
+                $wpdb->update($table_name, array('status' => 'processing'), array('id' => $id));
+                photo_purchase_send_status_update_notification($id, 'processing');
+            } elseif ($action === 'mark_completed') {
+                $wpdb->update($table_name, array('status' => 'completed'), array('id' => $id));
+                photo_purchase_send_status_update_notification($id, 'completed');
+            }
+        }
+        echo '<div class="updated"><p>一括操作を実行しました。</p></div>';
+    }
+
+    // Handle Edit View
+    if (isset($_GET['action']) && $_GET['action'] === 'edit' && isset($_GET['order_id'])) {
+        photo_purchase_order_edit_view(intval($_GET['order_id']));
+        return;
+    }
+
+    // Handle Print View
+    if (isset($_GET['action']) && in_array($_GET['action'], array('print_receipt', 'print_delivery')) && isset($_GET['order_id'])) {
+        return;
+    }
+
+    // Handle Status Update
+    if (isset($_GET['action']) && $_GET['action'] === 'update_status' && isset($_GET['order_id']) && isset($_GET['status'])) {
+        check_admin_referer('photo_update_order_status');
+        $order_id = intval($_GET['order_id']);
+        $new_status = sanitize_text_field($_GET['status']);
+
+        $wpdb->update(
+            $table_name,
+            array('status' => $new_status),
+            array('id' => $order_id)
+        );
+
+        // Stock Management: If cancelled, return stock
+        if ($new_status === 'cancelled') {
+            photo_purchase_update_stock_for_order($order_id, true);
+        }
+
+        // Send Notification to Buyer
+        photo_purchase_send_status_update_notification($order_id, $new_status);
+
+        echo '<div class="updated"><p>ステータスを更新し、購入者へメールを送信しました。</p></div>';
+    }
+
+    // Handle Cancel Order (Feature 6)
+    if (isset($_GET['action']) && $_GET['action'] === 'cancel_order' && isset($_GET['order_id'])) {
+        check_admin_referer('photo_cancel_order');
+        $order_id = intval($_GET['order_id']);
+
+        // Feature: Automatic Refund
+        $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $order_id));
+        $refund_message = '';
+        if ($order && !empty($order->transaction_id)) {
+            $secret_key = get_option('photo_pp_stripe_secret_key');
+            $refund_resp = wp_remote_post('https://api.stripe.com/v1/refunds', array(
+                'headers' => array(
+                    'Authorization' => 'Bearer ' . $secret_key,
+                    'Content-Type' => 'application/x-www-form-urlencoded',
+                ),
+                'body' => http_build_query(array(
+                    'payment_intent' => $order->transaction_id,
+                )),
+            ));
+
+            if (is_wp_error($refund_resp)) {
+                $refund_message = '（自動返金通信エラー: ' . $refund_resp->get_error_message() . '）';
+            } else {
+                $code = wp_remote_retrieve_response_code($refund_resp);
+                $body = json_decode(wp_remote_retrieve_body($refund_resp), true);
+                if ($code === 200) {
+                    $refund_message = '（自動返金が完了しました）';
+                } else {
+                    $error_detail = $body['error']['message'] ?? '不明なエラー';
+                    $refund_message = '（自動返金エラー: ' . $error_detail . '）';
+                }
+            }
+        }
+
+        // Directly update status and send cancel email
+        $wpdb->update($table_name, array('status' => 'cancelled'), array('id' => $order_id));
+        photo_purchase_update_stock_for_order($order_id, true);
+        photo_purchase_send_cancel_notification($order_id);
+        echo '<div class="updated"><p>注文をキャンセルし、購入者へキャンセルメールを送信しました。' . esc_html($refund_message) . '</p></div>';
+    }
+
+    // Handle Delete Order
+    if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['order_id'])) {
+        check_admin_referer('photo_delete_order');
+        $order_id = intval($_GET['order_id']);
+
+        // Stock Management: If not already cancelled, return stock before deleting
+        $order = $wpdb->get_row($wpdb->prepare("SELECT status FROM $table_name WHERE id = %d", $order_id));
+        if ($order && $order->status !== 'cancelled') {
+            photo_purchase_update_stock_for_order($order_id, true);
+        }
+
+        $wpdb->delete($table_name, array('id' => $order_id));
+        echo '<div class="updated"><p>注文を削除しました。</p></div>';
+    }
+
+    // Handle Bulk Delete Selected Orders
+    $bulk_action = (isset($_POST['photo_bulk_action']) && $_POST['photo_bulk_action'] !== '-1') ? $_POST['photo_bulk_action'] : (isset($_POST['photo_bulk_action2']) ? $_POST['photo_bulk_action2'] : '-1');
+    if ($bulk_action === 'delete' && !empty($_POST['order_ids'])) {
+        check_admin_referer('photo_bulk_orders_action');
+        $order_ids = array_map('intval', $_POST['order_ids']);
+        $deleted_count = 0;
+        foreach ($order_ids as $id) {
+            // Stock Management: If not already cancelled, return stock before deleting
+            $order = $wpdb->get_row($wpdb->prepare("SELECT status FROM $table_name WHERE id = %d", $id));
+            if ($order && $order->status !== 'cancelled') {
+                photo_purchase_update_stock_for_order($id, true);
+            }
+            if ($wpdb->delete($table_name, array('id' => $id))) {
+                $deleted_count++;
+            }
+        }
+        echo '<div class="updated"><p>' . sprintf('%d 件の注文を削除しました。', $deleted_count) . '</p></div>';
+    }
+
+    // Filter Logic
+    $filter = isset($_GET['order_filter']) ? sanitize_text_field($_GET['order_filter']) : 'active';
+    $where_clause = "WHERE 1=1";
+    
+    if ($filter === 'active') {
+        $where_clause .= " AND NOT (status = 'pending_payment' AND payment_method IN ('stripe', 'paypay'))";
+    } elseif ($filter === 'subscription') {
+        $where_clause .= " AND stripe_subscription_id != ''";
+    } elseif ($filter === 'abandoned') {
+        $days = 7;
+        $threshold_date = date('Y-m-d H:i:s', strtotime("-$days days"));
+        $where_clause .= " AND ( (status = 'pending_payment' AND payment_method IN ('stripe', 'paypay')) OR (status = 'pending_payment' AND created_at < '$threshold_date') )";
+    }
+    // 'all' filter doesn't add anything to $where_clause
+
+    $orders = $wpdb->get_results("
+        SELECT * FROM $table_name 
+        $where_clause
+        ORDER BY created_at DESC
+    ");
+
+    ?>
+    <div class="wrap">
+        <h1 class="wp-heading-inline"><?php _e('受注一覧', 'photo-purchase'); ?></h1>
+        <a href="<?php echo wp_nonce_url(admin_url('edit.php?post_type=photo_product&page=photo-purchase-orders&action=export_csv'), 'photo_export_csv'); ?>" class="page-title-action">💾 CSVエクスポート</a>
+        <hr class="wp-header-end">
+
+        <ul class="subsubsub">
+            <li class="all"><a href="<?php echo remove_query_arg('order_filter'); ?>" class="<?php echo ($filter === 'active') ? 'current' : ''; ?>">通常注文</a> |</li>
+            <li class="subscription"><a href="<?php echo add_query_arg('order_filter', 'subscription'); ?>" class="<?php echo ($filter === 'subscription') ? 'current' : ''; ?>">サブスクリプション</a> |</li>
+            <li class="abandoned"><a href="<?php echo add_query_arg('order_filter', 'abandoned'); ?>" class="<?php echo ($filter === 'abandoned') ? 'current' : ''; ?>">放置注文</a> |</li>
+            <li class="all_orders"><a href="<?php echo add_query_arg('order_filter', 'all'); ?>" class="<?php echo ($filter === 'all') ? 'current' : ''; ?>">すべて表示</a></li>
+        </ul>
+
+        <form method="post" action="">
+            <?php wp_nonce_field('photo_bulk_orders_action'); ?>
+            <div class="tablenav top">
+                <div class="alignleft actions bulkactions">
+                    <select name="photo_bulk_action">
+                        <option value="-1">一括操作</option>
+                        <option value="delete">削除</option>
+                        <option value="mark_processing">ステータス: 準備中に変更</option>
+                        <option value="mark_completed">ステータス: 完了（発送済み）に変更</option>
+                    </select>
+                    <input type="submit" class="button action" value="適用">
+                </div>
+            </div>
+
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <td id="cb" class="manage-column column-cb check-column"><input id="cb-select-all-1" type="checkbox"></td>
+                        <th><?php _e('注文日時', 'photo-purchase'); ?></th>
+                        <th><?php _e('購入者', 'photo-purchase'); ?></th>
+                        <th><?php _e('商品 / 形式', 'photo-purchase'); ?></th>
+                    <th><?php _e('配送先', 'photo-purchase'); ?></th>
+                    <th><?php _e('送り状番号', 'photo-purchase'); ?></th>
+                    <th><?php _e('合計金額', 'photo-purchase'); ?></th>
+                    <th><?php _e('支払い', 'photo-purchase'); ?></th>
+                    <th><?php _e('備考', 'photo-purchase'); ?></th>
+                    <th><?php _e('ステータス', 'photo-purchase'); ?></th>
+                    <th><?php _e('操作', 'photo-purchase'); ?></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (empty($orders)): ?>
+                    <tr>
+                        <td colspan="10"><?php _e('まだ注文はありません。', 'photo-purchase'); ?></td>
+                    </tr>
+                <?php else: ?>
+                    <?php foreach ($orders as $order):
+                        $items = json_decode($order->order_items, true);
+                        $shipping = json_decode($order->shipping_info, true);
+                        ?>
+                        <tr>
+                            <th scope="row" class="check-column">
+                                <input type="checkbox" name="order_ids[]" value="<?php echo $order->id; ?>">
+                            </th>
+                            <td><?php echo esc_html($order->created_at); ?></td>
+                            <td>
+                                <strong><?php echo esc_html($order->buyer_name); ?></strong><br>
+                                <small><?php echo esc_html($order->buyer_email); ?></small>
+                            </td>
+                            <td>
+                                <?php foreach ($items as $item): ?>
+                                    <div style="margin-bottom:5px;">
+                                        <?php echo esc_html(get_the_title($item['id'])); ?> 
+                                        <span style="color:#777;">(<?php echo photo_purchase_get_format_label($item['format']); ?> x <?php echo esc_html($item['qty']); ?>)</span>
+                                    </div>
+                                <?php endforeach; ?>
+                            </td>
+                            <td>
+                                <?php if (!empty($shipping['address'])): ?>
+                                    〒<?php echo esc_html($shipping['zip']); ?><br>
+                                    <?php echo esc_html($shipping['address']); ?>
+                                <?php else:
+                                    // サブスク商品かつ配送不要かチェック
+                                    $is_sub_shipping = false;
+                                    if ($items) {
+                                        foreach ($items as $it_s) {
+                                            if ($it_s['format'] === 'subscription') { $is_sub_shipping = true; break; }
+                                        }
+                                    }
+                                    if ($is_sub_shipping): ?>
+                                    <span class="description">配送不要（サービス）</span>
+                                    <?php else: ?>
+                                    <span class="description">ダウンロードのみ</span>
+                                    <?php endif; ?>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php echo esc_html($order->tracking_number); ?>
+                            </td>
+                             <td>
+                                <strong><?php echo number_format($order->total_amount); ?> 円</strong>
+                                <?php 
+                                $fee_breakdown = array();
+                                if ($f = ($shipping['fee'] ?? 0)) $fee_breakdown[] = '送料:' . number_format($f);
+                                if ($c = ($shipping['cod_fee'] ?? 0)) $fee_breakdown[] = '代引き:' . number_format($c);
+                                if (!empty($fee_breakdown)) echo '<br><small style="color:#888;">(' . implode(', ', $fee_breakdown) . ' 含む)</small>';
+                                
+                                if (!empty($order->coupon_info)) {
+                                    $coupon_data = json_decode($order->coupon_info, true);
+                                    if ($coupon_data && !empty($coupon_data['code'])) {
+                                        $dur_lbl = '';
+                                        if (isset($coupon_data['stripe_duration'])) {
+                                            $dur_lbl = ($coupon_data['stripe_duration'] === 'forever') ? ' (永続)' : (($coupon_data['stripe_duration'] === 'repeating') ? ' (' . ($coupon_data['stripe_months'] ?? 0) . 'ヶ月)' : ' (初回のみ)');
+                                        }
+                                        echo '<br><small style="color:#c00;">割引(' . esc_html($coupon_data['code']) . '): -' . number_format($coupon_data['applied_discount']) . '円' . $dur_lbl . '</small>';
+                                    }
+                                }
+                                ?>
+                             </td>
+                            <td>
+                                <?php
+                                if ($order->payment_method === 'bank_transfer') {
+                                    echo '銀行振込';
+                                } elseif ($order->payment_method === 'cod') {
+                                    echo '代引き';
+                                } elseif ($order->payment_method === 'paypay') {
+                                    echo 'PayPay';
+                                } else {
+                                    echo 'クレカ';
+                                }
+                                ?>
+                            </td>
+                            <td>
+                                <?php if (!empty($order->order_notes)): ?>
+                                    <span title="<?php echo esc_attr($order->order_notes); ?>" style="cursor:help; background:#f0f0f0; padding:4px 8px; border-radius:4px; font-size:16px;">📝</span>
+                                <?php else: ?>
+                                    <span style="color:#ccc;">-</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php if ($order->status === 'pending_payment'): ?>
+                                    <span
+                                        style="color:#d98c00; background:#fff9e6; padding:2px 8px; border-radius:4px; font-weight:bold;">入金待ち</span>
+                                <?php elseif ($order->status === 'processing'): ?>
+                                    <?php
+                                        $is_sub_proc = false;
+                                        $has_shipping_proc = false;
+                                        $items_proc = json_decode($order->order_items, true);
+                                        if ($items_proc) {
+                                            foreach ($items_proc as $it_p) {
+                                                if ($it_p['format'] === 'subscription') {
+                                                    $is_sub_proc = true;
+                                                    if (get_post_meta($it_p['id'], '_photo_sub_requires_shipping', true) === '1') {
+                                                        $has_shipping_proc = true;
+                                                    }
+                                                } elseif ($it_p['format'] !== 'digital') {
+                                                    $has_shipping_proc = true;
+                                                }
+                                            }
+                                        }
+                                        if ($is_sub_proc && !$has_shipping_proc) {
+                                            echo '<span style="color:#7c3aed; background:#f5f3ff; padding:2px 8px; border-radius:4px; font-weight:bold;">サービス中 / 継続中</span>';
+                                        } else {
+                                            echo '<span style="color:#28a745; background:#eaffea; padding:2px 8px; border-radius:4px; font-weight:bold;">決済完了 / 発送待ち</span>';
+                                        }
+                                    ?>
+                                <?php elseif ($order->status === 'active'): ?>
+                                    <span style="color:#22c55e; background:#f0fdf4; padding:2px 8px; border-radius:4px; font-weight:bold;">✅ サブスク有効</span>
+                                <?php elseif ($order->status === 'completed'): ?>
+                                    <?php 
+                                        $has_shipping = false;
+                                        $is_sub_item = false;
+                                        $cycle_label = '';
+                                        $items_tmp = json_decode($order->order_items, true);
+                                        if ($items_tmp) {
+                                            foreach($items_tmp as $it) {
+                                                if ($it['format'] === 'subscription') {
+                                                    $is_sub_item = true;
+                                                    if (get_post_meta($it['id'], '_photo_sub_requires_shipping', true) === '1') {
+                                                        $has_shipping = true;
+                                                        // 発送サイクル情報を取得
+                                                        $cnt = get_post_meta($it['id'], '_photo_sub_interval_count', true) ?: '1';
+                                                        $inv = get_post_meta($it['id'], '_photo_sub_interval', true) ?: 'month';
+                                                        $inv_labels = array('day' => '日', 'week' => '週', 'month' => 'ヶ月', 'year' => '年');
+                                                        $cycle_label = $cnt . ($inv_labels[$inv] ?? $inv) . 'ごと';
+                                                    }
+                                                } elseif ($it['format'] !== 'digital') {
+                                                    $has_shipping = true;
+                                                }
+                                            }
+                                        }
+                                        $lbl = ($is_sub_item && $has_shipping) ? '配送開始 / 継続中' : '発送済み / 完了';
+                                    ?>
+                                    <span style="color:#666; background:#eee; padding:2px 8px; border-radius:4px;"><?php echo $lbl; ?></span>
+                                    <?php if ($is_sub_item && $has_shipping && $cycle_label): ?>
+                                        <br><small style="color:#4f46e5; font-size:11px;">🔄 <?php echo esc_html($cycle_label); ?></small>
+                                    <?php endif; ?>
+                                <?php elseif ($order->status === 'cancelled'): ?>
+                                    <span
+                                        style="color:#a00; background:#fde; padding:2px 8px; border-radius:4px; font-weight:bold;">キャンセル</span>
+                                <?php elseif ($order->status === 'service_active'): ?>
+                                    <span style="color:#7c3aed; background:#f5f3ff; padding:2px 8px; border-radius:4px; font-weight:bold;">🟣 サブスク有効 / サービス中</span>
+                                <?php elseif ($order->status === 'sub_shipping'): ?>
+                                    <?php
+                                        $cycle_sub = '';
+                                        $_items_sub = json_decode($order->order_items, true);
+                                        if ($_items_sub) foreach ($_items_sub as $_it_sub) {
+                                            if ($_it_sub['format'] === 'subscription') {
+                                                $_cnt = get_post_meta($_it_sub['id'], '_photo_sub_interval_count', true) ?: '1';
+                                                $_inv = get_post_meta($_it_sub['id'], '_photo_sub_interval', true) ?: 'month';
+                                                $_inv_l = array('day' => '日', 'week' => '週', 'month' => 'ヶ月', 'year' => '年');
+                                                $cycle_sub = $_cnt . ($_inv_l[$_inv] ?? $_inv) . 'ごと';
+                                                break;
+                                            }
+                                        }
+                                    ?>
+                                    <span style="color:#4f46e5; background:#eef2ff; padding:2px 8px; border-radius:4px; font-weight:bold;">🔄 サブスク有効 / 配送中</span>
+                                    <?php if ($cycle_sub): ?><br><small style="color:#4f46e5; font-size:11px;">🔄 <?php echo esc_html($cycle_sub); ?></small><?php endif; ?>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php if ($order->status === 'pending_payment'): ?>
+                                    <a href="#" class="button button-small photo-update-status-ajax" data-id="<?php echo $order->id; ?>" data-status="processing">入金確認</a>
+                                <?php elseif ($order->status === 'processing'): ?>
+                                    <?php
+                                        // サービスサブスクは「発送完了」ではなく「サービス開始」に
+                                        $is_service_sub = false;
+                                        $has_ship_btn = false;
+                                        $_items_btn = json_decode($order->order_items, true);
+                                        if ($_items_btn) {
+                                            foreach ($_items_btn as $_it) {
+                                                if ($_it['format'] === 'subscription') {
+                                                    $is_service_sub = true;
+                                                    if (get_post_meta($_it['id'], '_photo_sub_requires_shipping', true) === '1') {
+                                                        $has_ship_btn = true;
+                                                    }
+                                                } elseif ($_it['format'] !== 'digital') {
+                                                    $has_ship_btn = true;
+                                                }
+                                            }
+                                        }
+                                        if ($is_service_sub && !$has_ship_btn):
+                                    ?>
+                                    <a href="#" class="button button-small photo-update-status-ajax" data-id="<?php echo $order->id; ?>" data-status="completed" style="color:#7c3aed; border-color:#7c3aed;">サービス開始</a>
+                                    <?php else: ?>
+                                    <a href="#" class="button button-small photo-update-status-ajax" data-id="<?php echo $order->id; ?>" data-status="completed">発送完了</a>
+                                    <?php endif; ?>
+                                <?php elseif ($order->status === 'active'): ?>
+                                    <?php
+                                        $has_shipping_active = false;
+                                        $_items_active = json_decode($order->order_items, true);
+                                        if ($_items_active) {
+                                            foreach ($_items_active as $_it_active) {
+                                                if ($_it_active['format'] === 'subscription' && get_post_meta($_it_active['id'], '_photo_sub_requires_shipping', true) === '1') {
+                                                    $has_shipping_active = true;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        if ($has_shipping_active):
+                                    ?>
+                                    <a href="#" class="button button-small photo-update-status-ajax" data-id="<?php echo $order->id; ?>" data-status="sub_shipping" style="background:#4f46e5; color:#fff; border-color:#4338ca;">発送開始</a>
+                                    <?php else: ?>
+                                    <a href="#" class="button button-small photo-update-status-ajax" data-id="<?php echo $order->id; ?>" data-status="service_active" style="color:#7c3aed; border-color:#7c3aed;">サービス開始</a>
+                                    <?php endif; ?>
+                                <?php endif; ?>
+                                <a href="<?php echo add_query_arg(array('action' => 'edit', 'order_id' => $order->id)); ?>"
+                                    class="button button-small">編集</a>
+                                <?php if ($order->status !== 'cancelled' && $order->status !== 'completed'): ?>
+                                    <a href="<?php echo wp_nonce_url(add_query_arg(array('action' => 'cancel_order', 'order_id' => $order->id)), 'photo_cancel_order'); ?>"
+                                        class="button button-small" style="color:#a00; border-color:#a00;"
+                                        onclick="return confirm('キャンセルしますか？購入者へメールを送信します。');">キャンセル</a>
+                                <?php endif; ?>
+                                <a href="<?php echo wp_nonce_url(admin_url('admin.php?action=photo_resend_email&order_id=' . $order->id), 'photo_resend_email'); ?>"
+                                    class="button button-small" onclick="return confirm('確認メールを再送しますか？');">📧 再送</a>
+                                <a href="<?php echo wp_nonce_url(add_query_arg(array('action' => 'delete', 'order_id' => $order->id)), 'photo_delete_order'); ?>"
+                                    class="button button-small" style="color:#a00; border-color:#a00;"
+                                    onclick="return confirm('本当に削除してもよろしいですか？');">削除</a>
+                                <br>
+                                <a href="<?php echo wp_nonce_url(add_query_arg(array('action' => 'print_delivery', 'order_id' => $order->id)), 'photo_print_order'); ?>"
+                                    target="_blank" class="button button-small" style="margin-top:5px;">納品書</a>
+                                <a href="<?php echo wp_nonce_url(add_query_arg(array('action' => 'print_receipt', 'order_id' => $order->id)), 'photo_print_order'); ?>"
+                                    target="_blank" class="button button-small" style="margin-top:5px;">領収書</a>
+                                <?php if (!empty($order->stripe_subscription_id) || $is_sub_item): ?>
+                                    <a href="https://dashboard.stripe.com/subscriptions/<?php echo esc_attr($order->stripe_subscription_id ?: 'customers'); ?>" target="_blank" class="button button-small" style="margin-top:5px;">サブスク管理</a>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td class="manage-column column-cb check-column"><input id="cb-select-all-2" type="checkbox"></td>
+                    <th><?php _e('注文日時', 'photo-purchase'); ?></th>
+                    <th><?php _e('購入者', 'photo-purchase'); ?></th>
+                    <th><?php _e('商品 / 形式', 'photo-purchase'); ?></th>
+                    <th><?php _e('配送先', 'photo-purchase'); ?></th>
+                    <th><?php _e('送り状番号', 'photo-purchase'); ?></th>
+                    <th><?php _e('合計金額', 'photo-purchase'); ?></th>
+                    <th><?php _e('支払い', 'photo-purchase'); ?></th>
+                    <th><?php _e('ステータス', 'photo-purchase'); ?></th>
+                    <th><?php _e('操作', 'photo-purchase'); ?></th>
+                </tr>
+            </tfoot>
+        </table>
+        <div class="tablenav bottom">
+            <div class="alignleft actions bulkactions">
+                <select name="photo_bulk_action2">
+                    <option value="-1">一括操作</option>
+                    <option value="delete">削除</option>
+                </select>
+                <input type="submit" class="button action" value="適用">
+            </div>
+		</div>
+        </form>
+    </div>
+    <?php
+}
+
+/**
+ * Order Edit View
+ */
+function photo_purchase_order_edit_view($order_id)
+{
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'photo_orders';
+    $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $order_id));
+
+    if (!$order) {
+        echo '<div class="error"><p>注文が見つかりません。</p></div>';
+        return;
+    }
+
+    $shipping = json_decode($order->shipping_info, true);
+    ?>
+    <div class="wrap">
+        <h1>注文の編集</h1>
+        <form method="post" action="<?php echo remove_query_arg('action'); ?>">
+            <?php wp_nonce_field('photo_update_order_action'); ?>
+            <input type="hidden" name="order_id" value="<?php echo esc_attr($order->id); ?>">
+            <input type="hidden" name="photo_update_order" value="1">
+
+            <table class="form-table">
+                <tr>
+                    <th><label>注文番号</label></th>
+                    <td><code><?php echo esc_html($order->order_token); ?></code></td>
+                </tr>
+                <tr>
+                    <th><label for="buyer_name">購入者名</label></th>
+                    <td><input type="text" name="buyer_name" id="buyer_name"
+                            value="<?php echo esc_attr($order->buyer_name); ?>" class="regular-text"></td>
+                </tr>
+                <tr>
+                    <th><label for="buyer_email">メールアドレス</label></th>
+                    <td><input type="email" name="buyer_email" id="buyer_email"
+                            value="<?php echo esc_attr($order->buyer_email); ?>" class="regular-text"></td>
+                </tr>
+                <tr>
+                    <th><label for="shipping_zip">郵便番号</label></th>
+                    <td><input type="text" name="shipping_zip" id="shipping_zip"
+                            value="<?php echo esc_attr($shipping['zip']); ?>" class="regular-text"></td>
+                </tr>
+                <tr>
+                    <th><label for="shipping_address">住所</label></th>
+                    <td><textarea name="shipping_address" id="shipping_address" rows="3"
+                            class="large-text"><?php echo esc_textarea($shipping['address']); ?></textarea></td>
+                </tr>
+                <tr>
+                    <th><label for="status">ステータス</label></th>
+                    <td>
+                        <select name="status" id="status">
+                            <option value="pending_payment" <?php selected($order->status, 'pending_payment'); ?>>入金待ち
+                            </option>
+                            <option value="processing" <?php selected($order->status, 'processing'); ?>>入金済み / 準備中（発送待ち）</option>
+                            <option value="completed" <?php selected($order->status, 'completed'); ?>>発送済み・配送開始（完了）</option>
+                            <?php
+                                // サービスサブスクかどうかチェック
+                                $_items_edit = json_decode($order->order_items, true);
+                                $is_service_edit = false;
+                                $is_ship_sub_edit = false;
+                                if ($_items_edit) {
+                                    foreach ($_items_edit as $_it_e) {
+                                        if ($_it_e['format'] === 'subscription') {
+                                            if (get_post_meta($_it_e['id'], '_photo_sub_requires_shipping', true) === '1') {
+                                                $is_ship_sub_edit = true;
+                                            } else {
+                                                $is_service_edit = true;
+                                            }
+                                        }
+                                    }
+                                }
+                            ?>
+                            <option value="active" <?php selected($order->status, 'active'); ?>>✅ サブスク有効</option>
+                            <?php if ($is_service_edit): ?>
+                            <option value="service_active" <?php selected($order->status, 'service_active'); ?>>🟣 サブスク有効 / サービス中</option>
+                            <?php endif; ?>
+                            <?php if ($is_ship_sub_edit): ?>
+                            <option value="sub_shipping" <?php selected($order->status, 'sub_shipping'); ?>>🔄 サブスク有効 / 配送中</option>
+                            <?php endif; ?>
+                            <option value="cancelled" <?php selected($order->status, 'cancelled'); ?>>キャンセル</option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="tracking_number">送り状番号</label></th>
+                    <td>
+                        <input type="text" name="tracking_number" id="tracking_number"
+                            value="<?php echo esc_attr($order->tracking_number); ?>" class="regular-text">
+                        <p class="description">発送完了時に購入者へ通知されます。</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="stripe_customer_id">Stripe 顧客ID</label></th>
+                    <td>
+                        <input type="text" name="stripe_customer_id" id="stripe_customer_id"
+                            value="<?php echo esc_attr($order->stripe_customer_id); ?>" class="regular-text"
+                            placeholder="cus_XXXXXXXXXXXXXXXXXX">
+                        <p class="description">Stripeダッシュボードで確認できる Customer ID（サブスク管理・解除ボタンに必要）</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label>帳票出力</label></th>
+                    <td>
+                        <a href="<?php echo esc_url(add_query_arg(array('photo_purchase_action' => 'print_doc', 'order_id' => $order->id, 'type' => 'print_invoice'), home_url('/'))); ?>" class="button" target="_blank">納品書（請求書）を表示</a>
+                        <a href="<?php echo esc_url(add_query_arg(array('photo_purchase_action' => 'print_doc', 'order_id' => $order->id, 'type' => 'print_receipt'), home_url('/'))); ?>" class="button" target="_blank">領収書を表示</a>
+                        <p class="description">別ウィンドウで開き、ブラウザの印刷機能（Ctrl+P）でPDF保存や印刷が可能です。</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="order_notes">注文備考</label></th>
+                    <td>
+                        <textarea name="order_notes" id="order_notes" rows="5" class="large-text"><?php echo esc_textarea($order->order_notes); ?></textarea>
+                        <p class="description">お客様が購入時に入力した備考欄です。管理者側で追記・修正も可能です。</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th><label>注文内容明細</label></th>
+                    <td>
+                        <div style="background:#f9f9f9; border:1px solid #ccd0d4; padding:15px; border-radius:4px; max-width:600px;">
+                            <?php 
+                            $items = json_decode($order->order_items, true);
+                            if ($items):
+                                foreach ($items as $item): ?>
+                                    <div style="margin-bottom:10px; border-bottom:1px solid #eee; padding-bottom:10px;">
+                                        <div style="font-weight:bold;"><?php echo get_the_title($item['id']); ?></div>
+                                        <div style="color:#666; font-size:13px;">形式: <?php echo photo_purchase_get_format_label($item['format']); ?> / 数量: <?php echo esc_html($item['qty']); ?></div>
+                                        <?php if (!empty($item['options']) && is_array($item['options'])): ?>
+                                            <?php foreach ($item['options'] as $opt): ?>
+                                                <?php 
+                                                $p_val = intval($opt['price']);
+                                                $p_label = ($p_val > 0) ? ' (+' . number_format($p_val) . '円)' : '';
+                                                ?>
+                                                <div style="color:#28a745; font-size:12px; margin-left:10px;">・ <?php 
+                                                $g_lbl = (!empty($opt['group']) && !in_array($opt['group'], array('項目', 'オプション'))) ? esc_html($opt['group']) . ': ' : 'オプション: ';
+                                                echo $g_lbl . esc_html($opt['name']); ?><?php echo $p_label; ?></div>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endforeach;
+                            endif; ?>
+                            
+                            <div style="margin-top:15px; border-top:2px solid #ccd0d4; pt:10px;">
+                                <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                                    <span>商品小計:</span>
+                                    <span>¥<?php 
+                                        $items_sum = 0;
+                                        if ($items) {
+                                            foreach ($items as $item) {
+                                                // Use buy-time price snapshot if available, fallback to current meta ONLY if snapshot is missing
+                                                $p = isset($item['price']) ? intval($item['price']) : -1;
+                                                if ($p === -1) {
+                                                    $p = intval(get_post_meta($item['id'], ($item['format'] === 'l_size') ? '_photo_price_l' : (($item['format'] === '2l_size') ? '_photo_price_2l' : '_photo_price_' . $item['format']), true) ?: get_post_meta($item['id'], '_photo_price', true));
+                                                }
+                                                $opt_p = 0;
+                                                if (!empty($item['options']) && is_array($item['options'])) {
+                                                    foreach ($item['options'] as $opt) { $opt_p += intval($opt['price'] ?? 0); }
+                                                }
+                                                $items_sum += ($p + $opt_p) * intval($item['qty']);
+                                            }
+                                        }
+                                        echo number_format($items_sum);
+                                    ?></span>
+                                </div>
+                                <?php if ($saved_shipping_fee = (isset($shipping['fee']) ? intval($shipping['fee']) : 0)): ?>
+                                    <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                                        <span>送料 (<?php echo esc_html($shipping['pref'] ?? ''); ?>):</span>
+                                        <span>¥<?php echo number_format($saved_shipping_fee); ?></span>
+                                    </div>
+                                <?php endif; ?>
+                                <?php if ($saved_cod_fee = (isset($shipping['cod_fee']) ? intval($shipping['cod_fee']) : 0)): ?>
+                                    <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                                        <span>代引き手数料:</span>
+                                        <span>¥<?php echo number_format($saved_cod_fee); ?></span>
+                                    </div>
+                                <?php endif; ?>
+                                <?php if (!empty($order->coupon_info)): ?>
+                                    <?php $coupon_data = json_decode($order->coupon_info, true); ?>
+                                    <?php if ($coupon_data): ?>
+                                        <div style="display:flex; justify-content:space-between; margin-bottom:5px; color:#d63384;">
+                                            <span>クーポン割引 (<?php echo esc_html($coupon_data['code']); ?>):</span>
+                                            <span>-¥<?php echo number_format($coupon_data['applied_discount']); ?></span>
+                                        </div>
+                                    <?php endif; ?>
+                                <?php endif; ?>
+                                </div>
+                                <?php 
+                                $coupon_applied = isset($coupon_data['applied_discount']) ? intval($coupon_data['applied_discount']) : 0;
+                                $tax_results_edit = photo_purchase_get_tax_breakdown($items, $saved_shipping_fee, $saved_cod_fee, $coupon_applied);
+                                if ($tax_results_edit): ?>
+                                    <div style="margin-top:10px; padding-top:10px; border-top:1px dashed #eee; font-size:12px; color:#666;">
+                                        <div style="font-weight:bold; margin-bottom:5px;">【消費税内訳】</div>
+                                        <?php foreach ($tax_results_edit as $rate => $res): ?>
+                                            <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
+                                                <span><?php echo $rate; ?>%対象 (税額):</span>
+                                                <span>¥<?php echo number_format($res['target']); ?> (¥<?php echo number_format($res['tax']); ?>)</span>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php endif; ?>
+                                <?php 
+                                $reg_num = get_option('photo_pp_tokusho_registration_number');
+                                if ($reg_num): ?>
+                                    <div style="margin-top:10px; font-size:11px; color:#888; text-align:right;">
+                                        登録番号: <?php echo esc_html($reg_num); ?>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+
+            <p class="submit">
+                <input type="submit" class="button button-primary" value="変更を保存">
+                <a href="<?php echo remove_query_arg(array('action', 'order_id')); ?>" class="button">戻る</a>
+            </p>
+        </form>
+    </div>
+    <?php
+}
+
+/**
+ * Order Print View (Strict HTML for PDF/Print)
+ */
+function photo_purchase_order_print_view($order_id, $type)
+{
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'photo_orders';
+    $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $order_id));
+
+    if (!$order)
+        wp_die('Order not found.');
+
+    $items = json_decode($order->order_items, true);
+    $shipping = json_decode($order->shipping_info, true);
+    $title = ($type === 'print_receipt') ? '領収書' : '納品書 (請求書)';
+    $site_name = get_bloginfo('name');
+    ?>
+    <!DOCTYPE html>
+    <html lang="ja">
+
+    <head>
+        <meta charset="UTF-8">
+        <title>
+            <?php echo $title; ?>_<?php echo esc_html($order->order_token); ?>_<?php echo esc_html($order->buyer_name); ?>
+        </title>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+        <style>
+            @page {
+                size: A4;
+                margin: 0;
+            }
+
+            body {
+                font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+                color: #333;
+                line-height: 1.6;
+                margin: 0;
+                padding: 0;
+                background: #f4f4f4;
+                -webkit-print-color-adjust: exact;
+            }
+
+            .container {
+                max-width: 800px;
+                margin: 40px auto;
+                background: #fff;
+                padding: 40px;
+                box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+                min-height: 1000px;
+                position: relative;
+                box-sizing: border-box;
+            }
+
+            @media print {
+                body {
+                    background: #fff;
+                }
+
+                .container {
+                    margin: 0;
+                    padding: 20px;
+                    width: 100%;
+                    max-width: none;
+                    box-shadow: none;
+                    min-height: auto;
+                }
+
+                .no-print {
+                    display: none;
+                }
+            }
+
+            .header {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                margin-bottom: 60px;
+                border-bottom: 3px solid #333;
+                padding-bottom: 20px;
+            }
+
+            h1 {
+                font-size: 32px;
+                margin: 0;
+                letter-spacing: 0.2em;
+            }
+
+            .info-section {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 50px;
+            }
+
+            .buyer-info,
+            .seller-info {
+                width: 48%;
+            }
+
+            .table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 40px;
+            }
+
+            .table th,
+            .table td {
+                border-bottom: 1px solid #ddd;
+                padding: 15px 10px;
+                text-align: left;
+            }
+
+            .table th {
+                background: #f8f8f8;
+                font-weight: bold;
+            }
+
+            .total-row td {
+                font-size: 1.2em;
+                font-weight: bold;
+                border-top: 2px solid #333;
+                border-bottom: 2px solid #333;
+                padding: 20px 10px;
+            }
+
+            .table tr {
+                page-break-inside: avoid;
+            }
+
+            .footer {
+                margin-top: 80px;
+                text-align: center;
+                font-size: 0.9em;
+                color: #777;
+                border-top: 1px dashed #ccc;
+                padding-top: 20px;
+            }
+
+            .stamp-box {
+                width: 80px;
+                height: 80px;
+                border: 1px solid #ddd;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 0.8em;
+                color: #ccc;
+                margin-left: auto;
+                margin-top: 20px;
+            }
+
+            @media print {
+                .no-print {
+                    display: none !important;
+                }
+
+                body {
+                    background: #fff;
+                    padding: 0;
+                }
+
+                .container {
+                    margin: 0;
+                    padding: 10px;
+                    box-shadow: none;
+                    width: 100%;
+                    max-width: none;
+                }
+            }
+        </style>
+    </head>
+
+    <body>
+        <div class="no-print" style="text-align:center; padding: 20px; background: #fff; border-bottom: 1px solid #ddd; margin-bottom: 20px; position: sticky; top: 0; z-index: 1000; display: flex; justify-content: center; gap: 15px;">
+            <button onclick="downloadPDF();" id="download-btn" style="padding:12px 25px; cursor:pointer; background: #0073aa; color: #fff; border: none; border-radius: 4px; font-weight: bold; font-size: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">📥 PDFをダウンロード (直接保存)</button>
+            <button onclick="window.print();" style="padding:12px 25px; cursor:pointer; background: #f7f7f7; color: #333; border: 1px solid #ccc; border-radius: 4px; font-weight: bold; font-size: 15px;">🖨️ 印刷設定を開く</button>
+        </div>
+        
+        <script>
+            function downloadPDF() {
+                const element = document.getElementById('print-container');
+                const btn = document.getElementById('download-btn');
+                const originalText = btn.innerText;
+                
+                btn.innerText = '⌛ 生成中...';
+                btn.disabled = true;
+                btn.style.opacity = '0.7';
+
+                const opt = {
+                    margin: [10, 10, 10, 10],
+                    filename: '<?php echo $title; ?>_<?php echo esc_html($order->order_token); ?>.pdf',
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                    pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+                };
+
+                html2pdf().set(opt).from(element).save().then(() => {
+                    btn.innerText = originalText;
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                }).catch(err => {
+                    console.error('PDF生成エラー:', err);
+                    alert('PDFの生成中にエラーが発生しました。印刷設定からPDF保存をお試しください。');
+                    btn.innerText = originalText;
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                });
+            }
+        </script>
+
+        <div id="print-container" class="container">
+            <div class="header">
+                <h1>
+                    <?php 
+                    if ($type !== 'print_receipt' && get_option('photo_pp_tokusho_registration_number')) {
+                        echo '適格請求書 (納品書)';
+                    } else {
+                        echo $title;
+                    }
+                    ?>
+                </h1>
+                <div>
+                    <div>発行日: <?php echo date('Y年m月d日'); ?></div>
+                    <?php if ($type === 'print_receipt'): ?>
+                        <div>領収番号: <?php echo esc_html($order->order_token); ?></div>
+                    <?php else: ?>
+                        <div>注文番号: <?php echo esc_html($order->order_token); ?></div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <div class="info-section">
+                <div class="buyer-info">
+                    <div style="font-size: 1.2em; margin-bottom: 10px;"><strong><?php echo esc_html($order->buyer_name); ?>
+                            様</strong></div>
+                    <?php if (!empty($shipping['address'])): ?>
+                        <div>〒<?php echo esc_html($shipping['zip']); ?></div>
+                        <div><?php echo nl2br(esc_html($shipping['address'])); ?></div>
+                    <?php endif; ?>
+                </div>
+                <div class="seller-info" style="text-align: right;">
+                    <div style="font-size: 1.1em; font-weight: bold;">
+                        <?php echo esc_html(get_option('photo_pp_tokusho_name', get_option('photo_pp_seller_name', get_bloginfo('name')))); ?>
+                    </div>
+                    <?php 
+                    $seller_address = get_option('photo_pp_tokusho_address', '');
+                    $seller_tel = get_option('photo_pp_tokusho_tel', '');
+                    $seller_email = get_option('photo_pp_tokusho_email', get_option('photo_pp_seller_email', get_option('admin_email')));
+                    if ($seller_address) echo '<div>住所: ' . esc_html($seller_address) . '</div>';
+                    if ($seller_tel) echo '<div>電話: ' . esc_html($seller_tel) . '</div>';
+                    if ($seller_email) echo '<div>Email: ' . esc_html($seller_email) . '</div>';
+                    $reg_num = get_option('photo_pp_tokusho_registration_number', '');
+                    if ($reg_num) echo '<div>登録番号: ' . esc_html($reg_num) . '</div>';
+                    ?>
+                </div>
+            </div>
+
+            <?php if ($type === 'print_receipt'): ?>
+                <div style="font-size:1.5em; text-align:center; padding:20px; border:1px solid #333; margin-bottom:40px;">
+                    金額： ￥<?php echo number_format($order->total_amount); ?> -
+                </div>
+            <?php endif; ?>
+
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>商品内容 / 形式</th>
+                        <th style="text-align:right;">単価</th>
+                        <th style="text-align:center;">数量</th>
+                        <th style="text-align:right;">金額</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php 
+                    $tax_breakdown = array();
+                    foreach ($items as $item):
+                        $photo_id = intval($item['id']);
+                        $format = sanitize_text_field($item['format']);
+                        $qty = intval($item['qty']);
+                        $rate = intval($item['tax_rate'] ?? 10);
+
+                        // Use snapshot price if available, fallback to meta only if missing
+                        $price = isset($item['price']) ? intval($item['price']) : -1;
+                        if ($price === -1) {
+                            $price_key = ($format === 'l_size') ? '_photo_price_l' : (($format === '2l_size') ? '_photo_price_2l' : '_photo_price_' . $format);
+                            if ($format === 'digital') {
+                                $price = get_post_meta($photo_id, '_photo_price_digital', true);
+                                if (!$price)
+                                    $price = get_post_meta($photo_id, '_photo_price', true);
+                            } else {
+                                $price = get_post_meta($photo_id, $price_key, true);
+                            }
+                        }
+                        $opt_p = 0;
+                        $opt_names = '';
+                        if (!empty($item['options']) && is_array($item['options'])) {
+                            foreach ($item['options'] as $opt) {
+                                $opt_p += intval($opt['price'] ?? 0);
+                                $g_pfx = (!empty($opt['group']) && !in_array($opt['group'], array('項目', 'オプション'))) ? $opt['group'] . ': ' : '';
+                                $opt_names .= ' / ' . $g_pfx . $opt['name'];
+                            }
+                        }
+
+                        $unit_price = intval($price) + $opt_p;
+                        $subtotal = $unit_price * $qty;
+                        
+                        if (!isset($tax_breakdown[$rate])) $tax_breakdown[$rate] = 0;
+                        $tax_breakdown[$rate] += $subtotal;
+                        ?>
+                        <tr>
+                            <td>
+                                <?php echo get_the_title($photo_id); ?> (<?php echo photo_purchase_get_format_label($format); ?>)
+                                <?php if ($opt_names) echo '<br><small style="color:#666;">詳細: ' . esc_html(ltrim($opt_names, ' / ')) . '</small>'; ?>
+                            </td>
+                            <td style="text-align:right;">￥<?php echo number_format($unit_price); ?></td>
+                            <td style="text-align:center;"><?php echo esc_html($qty); ?></td>
+                            <td style="text-align:right;">￥<?php echo number_format($subtotal); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    <?php
+                    $shipping = json_decode($order->shipping_info, true);
+                    $saved_shipping_fee = isset($shipping['fee']) ? intval($shipping['fee']) : 0;
+                    $saved_cod_fee = isset($shipping['cod_fee']) ? intval($shipping['cod_fee']) : 0;
+
+                    if ($saved_shipping_fee > 0): ?>
+                        <tr>
+                            <td>配送料<?php echo !empty($shipping['pref']) ? ' (' . esc_html($shipping['pref']) . ')' : ''; ?></td>
+                            <td style="text-align:right;">￥<?php echo number_format($saved_shipping_fee); ?></td>
+                            <td style="text-align:center;">1</td>
+                            <td style="text-align:right;">￥<?php echo number_format($saved_shipping_fee); ?></td>
+                        </tr>
+                    <?php endif; ?>
+
+                    <?php if ($saved_cod_fee > 0): ?>
+                        <tr>
+                            <td>代引き手数料</td>
+                            <td style="text-align:right;">￥<?php echo number_format($saved_cod_fee); ?></td>
+                            <td style="text-align:center;">1</td>
+                            <td style="text-align:right;">￥<?php echo number_format($saved_cod_fee); ?></td>
+                        </tr>
+                    <?php endif; ?>
+                    
+                    <?php if (!empty($order->coupon_info)): ?>
+                        <?php $coupon_data = json_decode($order->coupon_info, true); ?>
+                        <?php if ($coupon_data): ?>
+                            <tr>
+                                <td>クーポン割引 (<?php echo esc_html($coupon_data['code']); ?>)</td>
+                                <td style="text-align:right;">-￥<?php echo number_format($coupon_data['applied_discount']); ?></td>
+                                <td style="text-align:center;">1</td>
+                                <td style="text-align:right;">-￥<?php echo number_format($coupon_data['applied_discount']); ?></td>
+                            </tr>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                </tbody>
+                <tfoot>
+                    <tr class="total-row">
+                        <td colspan="3" style="text-align:right;">合計金額 (税込)</td>
+                        <td style="text-align:right;">￥<?php echo number_format($order->total_amount); ?></td>
+                    </tr>
+                    <?php
+                    // Use helper for accurate tax breakdown (including coupon distribution)
+                    $discount_val = 0;
+                    if (!empty($order->coupon_info)) {
+                        $c_info = json_decode($order->coupon_info, true);
+                        $discount_val = intval($c_info['applied_discount'] ?? 0);
+                    }
+                    $tax_results_print = photo_purchase_get_tax_breakdown($items, $saved_shipping_fee, $saved_cod_fee, $discount_val);
+
+                    foreach ($tax_results_print as $r => $res):
+                    ?>
+                    <tr>
+                        <td colspan="3" style="text-align:right; border-top:none; padding: 5px 10px;">( <?php echo $r; ?>%対象額 ￥<?php echo number_format($res['target']); ?> )</td>
+                        <td style="text-align:right; border-top:none; padding: 5px 10px;">( 内消費税額 ￥<?php echo number_format($res['tax']); ?> )</td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tfoot>
+            </table>
+
+
+
+            <div class="footer">
+                <p>ご利用いただきありがとうございます。</p>
+            </div>
+        </div>
+    </body>
+
+    </html>
+    <?php
+    exit;
+}
+
+/**
+ * Handle print actions early to avoid admin-ajax or admin-page wrapper
+ */
+function photo_purchase_handle_print_actions()
+{
+    if (isset($_GET['page']) && $_GET['page'] === 'photo-purchase-orders' && isset($_GET['action'])) {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('この操作を行う権限がありません。', 'photo-purchase'));
+        }
+        if (in_array($_GET['action'], array('print_receipt', 'print_delivery')) && isset($_GET['order_id'])) {
+            if (!isset($_GET['_wpnonce']) || !wp_verify_nonce($_GET['_wpnonce'], 'photo_print_order')) {
+                wp_die(__('セキュリティエラー：リンクの期限が切れています。受注一覧からやり直してください。', 'photo-purchase'));
+            }
+            photo_purchase_order_print_view(intval($_GET['order_id']), $_GET['action']);
+        }
+        if ($_GET['action'] === 'export_csv') {
+            if (!isset($_GET['_wpnonce']) || !wp_verify_nonce($_GET['_wpnonce'], 'photo_export_csv')) {
+                wp_die(__('セキュリティエラー：リンクの期限が切れています。受注一覧からやり直してください。', 'photo-purchase'));
+            }
+            photo_purchase_export_orders_csv();
+        }
+    }
+}
+
+/**
+ * Generate and download orders CSV
+ */
+function photo_purchase_export_orders_csv()
+{
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'photo_orders';
+    $orders = $wpdb->get_results("SELECT * FROM $table_name ORDER BY created_at DESC");
+
+    $filename = 'orders_' . date('Ymd_His') . '.csv';
+
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+
+    $output = fopen('php://output', 'w');
+
+    // Output UTF-8 BOM for Excel
+    fwrite($output, "\xEF\xBB\xBF");
+
+    // CSV Header
+    fputcsv($output, array(
+        '注文ID',
+        '注文番号',
+        '購入者名',
+        'メールアドレス',
+        '購入商品',
+        '商品小計',
+        '送料',
+        '代引き手数料',
+        'クーポンコード',
+        'クーポン割引額',
+        '合計金額',
+        '合計消費税',
+        '10%対象額(税込)',
+        '10%消費税',
+        '8%対象額(税込)',
+        '8%消費税',
+        '支払い方法',
+        'ステータス',
+        '送り状番号',
+        '注文日時',
+        '郵便番号',
+        '都道府県',
+        '住所',
+        '備考',
+        'Stripe 顧客ID',
+        'Stripe サブスクID'
+    ));
+
+    foreach ($orders as $order) {
+        $items = json_decode($order->order_items, true);
+        $shipping = json_decode($order->shipping_info, true);
+
+        $item_details = array();
+        $items_amount = 0;
+        foreach ($items as $item) {
+            $photo_id = intval($item['id']);
+            $format = $item['format'];
+            $qty = intval($item['qty']);
+
+            // Get Price (Server Side Lookup for accuracy in CSV)
+            $price_key = ($format === 'l_size') ? '_photo_price_l' : (($format === '2l_size') ? '_photo_price_2l' : '_photo_price_' . $format);
+            $p = intval(get_post_meta($photo_id, $price_key, true) ?: get_post_meta($photo_id, '_photo_price', true));
+            $opt_p = 0;
+            $opt_names = array();
+
+            if (!empty($item['options']) && is_array($item['options'])) {
+                foreach ($item['options'] as $opt) {
+                    $opt_p += intval($opt['price'] ?? 0);
+                    $g_pfx = (!empty($opt['group']) && !in_array($opt['group'], array('項目', 'オプション'))) ? $opt['group'] . ': ' : '';
+                    $opt_names[] = $g_pfx . $opt['name'];
+                }
+            }
+
+            $line_total = ($p + $opt_p) * $qty;
+            $items_amount += $line_total;
+
+            $label = get_the_title($photo_id) . '(' . photo_purchase_get_format_label($format) . ' x ' . $qty . ')';
+            if (!empty($opt_names)) {
+                $label .= ' [' . implode(', ', $opt_names) . ']';
+            }
+            $item_details[] = $label;
+        }
+
+        $coupon_code = '';
+        $coupon_discount = 0;
+        if (!empty($order->coupon_info)) {
+            $coupon_data = json_decode($order->coupon_info, true);
+            if ($coupon_data) {
+                $coupon_code = $coupon_data['code'] ?? '';
+                $coupon_discount = $coupon_data['applied_discount'] ?? 0;
+            }
+        }
+
+        $shipping_str = '';
+        if (!empty($shipping['address'])) {
+            $shipping_str = '〒' . $shipping['zip'] . ' ' . ($shipping['pref'] ?? '') . $shipping['address'];
+        } else {
+            $shipping_str = 'ダウンロードのみ';
+        }
+
+        $payment_lbl = '';
+        if ($order->payment_method === 'bank_transfer') {
+            $payment_lbl = '銀行振込';
+        } elseif ($order->payment_method === 'cod') {
+            $payment_lbl = '代引き';
+        } elseif ($order->payment_method === 'paypay') {
+            $payment_lbl = 'PayPay';
+        } else {
+            $payment_lbl = 'クレジットカード';
+        }
+
+        $has_shipping = false;
+        if (!empty($order->order_items)) {
+            $items_tmp = json_decode($order->order_items, true);
+            if (is_array($items_tmp)) {
+                foreach ($items_tmp as $it) {
+                    if ($it['format'] !== 'digital' && $it['format'] !== 'subscription') {
+                        $has_shipping = true;
+                        break;
+                    }
+                    if ($it['format'] === 'subscription') {
+                        if (get_post_meta($it['id'], '_photo_sub_requires_shipping', true) === '1') {
+                            $has_shipping = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        $status_lbl = '';
+        if ($order->status === 'pending_payment') {
+            $status_lbl = '入金待ち';
+        } elseif ($order->status === 'processing') {
+            $status_lbl = $has_shipping ? '決済完了 / 発送準備中' : '決済完了 / サービス有効';
+        } elseif ($order->status === 'completed') {
+            $is_sub = !empty($order->stripe_subscription_id);
+            if ($is_sub && $has_shipping) {
+                $status_lbl = 'サブスク有効 / 配送中';
+            } else {
+                $status_lbl = $has_shipping ? '発送済み' : '完了';
+            }
+        }
+ elseif ($order->status === 'cancelled') {
+            $status_lbl = 'キャンセル';
+        }
+
+        $tax_results = photo_purchase_get_tax_breakdown($items_tmp, $shipping['fee'] ?? 0, $shipping['cod_fee'] ?? 0, $coupon_discount);
+        $tax_total = 0;
+        foreach ($tax_results as $tr) $tax_total += $tr['tax'];
+
+        fputcsv($output, array(
+            $order->id,
+            $order->order_token,
+            $order->buyer_name,
+            $order->buyer_email,
+            implode(' / ', $item_details),
+            $items_amount,
+            $shipping['fee'] ?? 0,
+            $shipping['cod_fee'] ?? 0,
+            $coupon_code,
+            $coupon_discount,
+            $order->total_amount,
+            $tax_total,
+            $tax_results[10]['target'] ?? 0,
+            $tax_results[10]['tax'] ?? 0,
+            $tax_results[8]['target'] ?? 0,
+            $tax_results[8]['tax'] ?? 0,
+            $payment_lbl,
+            $status_lbl,
+            $order->tracking_number,
+            $order->created_at,
+            $shipping['zip'] ?? '',
+            $shipping['pref'] ?? '',
+            $shipping['address'] ?? '',
+            $order->order_notes,
+            $order->stripe_customer_id,
+            $order->stripe_subscription_id
+        ));
+    }
+
+    fclose($output);
+    exit;
+}
+
+/**
+ * Common helper to get readable labels for photo formats
+ */
+if (!function_exists('photo_purchase_get_format_label')) {
+    function photo_purchase_get_format_label($format)
+    {
+        $labels = array(
+            'digital' => 'ダウンロード',
+            'l_size'  => '配送品',
+            '2l_size' => '配送品(B)',
+        );
+        return $labels[$format] ?? $format;
+    }
+}
+add_action('init', 'photo_purchase_handle_secure_download');
+
+/**
+ * Generate a secure, signed download URL for a specific photo in an order
+ */
+function photo_purchase_generate_download_url($order_token, $photo_id)
+{
+    $base_url = home_url('/');
+
+    // Create a signature using the order token and photo ID
+    $salt = defined('AUTH_KEY') ? AUTH_KEY : 'photo_purchase_salt';
+    $signature = substr(hash_hmac('sha256', $order_token . '|' . $photo_id, $salt), 0, 16);
+
+    // Pack into a single opaque key
+    $raw_token = $order_token . '|' . $photo_id . '|' . $signature;
+    $pdk = base64_encode($raw_token);
+    // URL-safe base64
+    $pdk = str_replace(array('+', '/', '='), array('-', '_', ''), $pdk);
+
+    return add_query_arg('pdk', $pdk, $base_url);
+}
+
+/**
+ * Secure Download URL Signature verification
+ */
+function photo_purchase_verify_download_sig($order_token, $photo_id, $signature)
+{
+    $salt = defined('AUTH_KEY') ? AUTH_KEY : 'photo_purchase_salt';
+    $expected = substr(hash_hmac('sha256', $order_token . '|' . $photo_id, $salt), 0, 16);
+    return hash_equals($expected, $signature);
+}
+
+/**
+ * Get Email Footer with Seller Information
+ */
+function photo_purchase_get_email_footer($token = '', $email = '')
+{
+    $seller_name = get_option('photo_pp_tokusho_name', get_option('photo_pp_seller_name', get_bloginfo('name')));
+    $seller_address = get_option('photo_pp_tokusho_address', '');
+    $seller_tel = get_option('photo_pp_tokusho_tel', '');
+    $seller_email = get_option('photo_pp_seller_email', get_option('admin_email'));
+
+    $footer = "\n\n--------------------------------------------------\n";
+    $footer .= $seller_name . "\n";
+    $site_url = get_option('photo_pp_tokusho_url', home_url());
+    if ($site_url) {
+        $footer .= $site_url . "\n";
+    }
+    if (!empty($seller_address)) {
+        $footer .= "住所: " . $seller_address . "\n";
+    }
+    if (!empty($seller_tel)) {
+        $footer .= "電話: " . $seller_tel . "\n";
+    }
+    $footer .= "Email: " . $seller_email . "\n";
+    
+    $registration_number = get_option('photo_pp_tokusho_registration_number', '');
+    if (!empty($registration_number)) {
+        $footer .= "登録番号: " . $registration_number . "\n";
+    }
+
+    if ($token) {
+        $footer .= "照会コード: " . $token . "\n";
+    }
+
+    $inquiry_page_id = get_option('photo_order_inquiry_page_id');
+    if ($inquiry_page_id) {
+        $inquiry_url = get_permalink($inquiry_page_id);
+        if ($token && $email) {
+            $quick_url = add_query_arg(array('pp_token' => $token, 'pp_email' => $email), $inquiry_url);
+            $footer .= "【ご注文内容の確認・ダウンロード】\n" . $quick_url . "\n";
+        } else {
+            $footer .= "【注文照会ページ】\n" . $inquiry_url . "\n";
+        }
+    }
+
+    $my_page_url = home_url('/my-account/');
+    $footer .= "\n【マイページ（購入履歴一覧）】\n" . $my_page_url . "\n";
+
+    $footer .= "--------------------------------------------------\n";
+
+    return $footer;
+}
+
+/**
+ * Handle Secure Download Request
+ */
+function photo_purchase_handle_secure_download()
+{
+    if (!isset($_GET['pdk'])) {
+        return;
+    }
+
+    $pdk = sanitize_text_field($_GET['pdk']);
+
+    // Decode URL-safe base64
+    $raw_token_encoded = str_replace(array('-', '_'), array('+', '/'), $pdk);
+    $raw_token = base64_decode($raw_token_encoded);
+
+    if (!$raw_token) {
+        wp_die('無効なトークンです。');
+    }
+
+    $parts = explode('|', $raw_token);
+    if (count($parts) !== 3) {
+        wp_die('トークン形式が正しくありません。');
+    }
+
+    list($order_token, $photo_id, $signature) = $parts;
+
+    // Verify Signature
+    if (!photo_purchase_verify_download_sig($order_token, $photo_id, $signature)) {
+        wp_die('不正なアクセスです。署名が一致しません。');
+    }
+
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'photo_orders';
+    $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE order_token = %s", $order_token));
+
+    if (!$order) {
+        wp_die('注文が見つかりません。');
+    }
+
+    // Verify order status
+    if (!in_array($order->status, array('processing', 'completed'))) {
+        wp_die('この注文はまだダウンロード可能な状態ではありません。');
+    }
+
+    // Verify photo is in the order
+    $items = json_decode($order->order_items, true);
+    $found = false;
+    foreach ($items as $item) {
+        if (intval($item['id']) === intval($photo_id) && $item['format'] === 'digital') {
+            $found = true;
+            break;
+        }
+    }
+
+    if (!$found) {
+        wp_die('この写真をダウンロードする権限がありません。');
+    }
+
+    // FEATURE: Enforce expiry and count limits before serving (Default: 7 days, 5 downloads)
+    if (function_exists('photo_purchase_check_download_limits')) {
+        photo_purchase_check_download_limits($order_token, $photo_id);
+    }
+    // Get the high-res file
+    $file_id = get_post_meta($photo_id, '_photo_high_res_id', true);
+    $file_path = '';
+
+    if ($file_id) {
+        $file_path = get_attached_file($file_id);
+    } else {
+        // Fallback to URL if ID is missing (for older items)
+        $file_url = get_post_meta($photo_id, '_photo_high_res_file', true);
+        if ($file_url) {
+            // Try to find the file path from URL
+            $upload_dir = wp_upload_dir();
+            $base_url = $upload_dir['baseurl'];
+            if (strpos($file_url, $base_url) !== false) {
+                $file_path = str_replace($base_url, $upload_dir['basedir'], $file_url);
+            }
+        }
+    }
+
+    if (empty($file_path) || !file_exists($file_path)) {
+        wp_die('ファイルが見つかりません。管理者に連絡してください。');
+    }
+
+    // Serve the file
+    $file_name = basename($file_path);
+    $file_size = filesize($file_path);
+    $file_info = wp_check_filetype($file_name);
+
+    // Anonymize filename: photo-[order_token]-[photo_id].ext
+    $ext = !empty($file_info['ext']) ? $file_info['ext'] : 'jpg';
+    $new_file_name = sprintf('photo-%s-%d.%s', $order_token, $photo_id, $ext);
+
+    header('Content-Description: File Transfer');
+    header('Content-Type: ' . ($file_info['type'] ? $file_info['type'] : 'application/octet-stream'));
+    header('Content-Disposition: attachment; filename="' . $new_file_name . '"');
+    header('Expires: 0');
+    header('Cache-Control: must-revalidate');
+    header('Pragma: public');
+    header('Content-Length: ' . $file_size);
+
+    readfile($file_path);
+
+    // FEATURE: Log this download
+    if (function_exists('photo_purchase_log_download')) {
+        photo_purchase_log_download($order_token, $photo_id);
+    }
+    exit;
+}
+
+/* =============================================================================
+ * FEATURE 3: Resend Buyer Confirmation Email
+ * ============================================================================= */
+function photo_purchase_handle_resend_email()
+{
+    if (!current_user_can('manage_options'))
+        wp_die('権限がありません。');
+    check_admin_referer('photo_resend_email');
+
+    $order_id = intval($_GET['order_id'] ?? 0);
+    if (!$order_id)
+        wp_die('注文IDが指定されていません。');
+
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'photo_orders';
+    $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $order_id));
+    if (!$order)
+        wp_die('注文が見つかりません。');
+
+    $order_data = array(
+        'items' => json_decode($order->order_items, true),
+        'buyer' => array('name' => $order->buyer_name, 'email' => $order->buyer_email),
+        'shipping' => json_decode($order->shipping_info, true),
+        'method' => $order->payment_method,
+    );
+
+    if (function_exists('photo_purchase_send_buyer_notification')) {
+        photo_purchase_send_buyer_notification($order->order_token, $order_data, $order->total_amount);
+    }
+
+    wp_safe_redirect(add_query_arg(array('page' => 'photo-purchase-orders', 'pp_notice' => 'resent'), admin_url('edit.php?post_type=photo_product')));
+    exit;
+}
+add_action('admin_action_photo_resend_email', 'photo_purchase_handle_resend_email');
+
+
+/* =============================================================================
+ * FEATURE 5: Download Expiry + Count Limit
+ * ============================================================================= */
+
+/**
+ * Check download is within time and count limits. Called before serving file.
+ * Returns true if OK, otherwise calls wp_die().
+ */
+function photo_purchase_check_download_limits($order_token, $photo_id)
+{
+    $download_limit = intval(get_option('photo_pp_download_limit', 5));
+    $download_expiry = intval(get_option('photo_pp_download_expiry', 7));
+
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'photo_orders';
+    $log_table = $wpdb->prefix . 'photo_download_log';
+
+    // Create log table if missing
+    if ($wpdb->get_var("SHOW TABLES LIKE '$log_table'") !== $log_table) {
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+        dbDelta("CREATE TABLE $log_table (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            order_token VARCHAR(64) NOT NULL,
+            photo_id BIGINT UNSIGNED NOT NULL,
+            downloaded_at DATETIME NOT NULL,
+            PRIMARY KEY (id), KEY order_photo (order_token, photo_id)
+        ) " . $wpdb->get_charset_collate() . ";");
+    }
+
+    // Check expiry
+    if ($download_expiry > 0) {
+        $created = $wpdb->get_var($wpdb->prepare("SELECT created_at FROM $table_name WHERE order_token = %s", $order_token));
+        if ($created && time() > strtotime($created) + ($download_expiry * DAY_IN_SECONDS)) {
+            wp_die('このダウンロードリンクの有効期限（' . $download_expiry . '日間）が切れています。販売者にお問い合わせください。');
+        }
+    }
+
+    // Check count
+    if ($download_limit > 0) {
+        $count = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $log_table WHERE order_token = %s AND photo_id = %d",
+            $order_token,
+            intval($photo_id)
+        ));
+        if ($count >= $download_limit) {
+            wp_die('このファイルのダウンロード上限（' . $download_limit . '回）に達しました。', 'ダウンロード制限', array('response' => 403));
+        }
+    }
+    return true;
+}
+
+/** Record a completed download in the log table */
+function photo_purchase_log_download($order_token, $photo_id)
+{
+    global $wpdb;
+    $log_table = $wpdb->prefix . 'photo_download_log';
+    // Table may not exist yet on very first download — check
+    if ($wpdb->get_var("SHOW TABLES LIKE '$log_table'") === $log_table) {
+        $wpdb->insert($log_table, array(
+            'order_token' => $order_token,
+            'photo_id' => intval($photo_id),
+            'downloaded_at' => current_time('mysql'),
+        ));
+    }
+}
+
+/* =============================================================================
+ * FEATURE 6: Order Cancellation
+ * ============================================================================= */
+
+/**
+ * (Empty space for removal of old cancel notification)
+ */
+
+/**
+ * Helper to add admin notice on orders page
+ */
+add_action('admin_notices', function () {
+    if (!isset($_GET['page']) || $_GET['page'] !== 'photo-purchase-orders')
+        return;
+    if (isset($_GET['pp_notice'])) {
+        $notices = array(
+            'resent' => 'メールを再送しました。',
+            'cancelled' => '注文をキャンセルし、購入者へメールを送信しました。',
+        );
+        $msg = $notices[sanitize_key($_GET['pp_notice'])] ?? '';
+        if ($msg) {
+            echo '<div class="updated notice is-dismissible"><p>' . esc_html($msg) . '</p></div>';
+        }
+    }
+});
+
+/* =============================================================================
+ * 注文照会ショートコード [photo_order_inquiry]
+ * 使い方: WordPressの任意のページに [photo_order_inquiry] を貼るだけ
+ * ============================================================================= */
+function photo_purchase_order_inquiry_shortcode()
+{
+    ob_start();
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'photo_orders';
+
+    $order = null;
+    $error = '';
+    $searched = false;
+
+    // フォーム送信または GET パラメータによる照会
+    $input_token = '';
+    $input_email = '';
+
+    if (isset($_POST['pp_inquiry_token'], $_POST['pp_inquiry_email'], $_POST['pp_inquiry_nonce'])) {
+        if (!wp_verify_nonce($_POST['pp_inquiry_nonce'], 'pp_order_inquiry')) {
+            $error = 'セキュリティエラーが発生しました。再度お試しください。';
+        } else {
+            $input_token = sanitize_text_field($_POST['pp_inquiry_token']);
+            $input_email = sanitize_email($_POST['pp_inquiry_email']);
+        }
+    } elseif (isset($_GET['pp_token'], $_GET['pp_email'])) {
+        $input_token = sanitize_text_field($_GET['pp_token']);
+        $input_email = sanitize_email($_GET['pp_email']);
+    }
+
+    if ($input_token && $input_email) {
+        $searched = true;
+        $order = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM $table_name WHERE order_token = %s AND buyer_email = %s",
+            $input_token,
+            $input_email
+        ));
+        if (!$order) {
+            $error = '注文が見つかりませんでした。注文番号とメールアドレスをご確認ください。';
+        }
+    }
+
+    // ステータスラベル
+    $status_labels = array(
+        'pending_payment' => array('label' => '入金待ち', 'color' => '#d98c00', 'bg' => '#fff9e6'),
+        'processing' => array('label' => '決済完了 / 発送待ち', 'color' => '#1a7a2e', 'bg' => '#eaffea'),
+        'active' => array('label' => '✅ サブスク有効', 'color' => '#22c55e', 'bg' => '#f0fdf4'),
+        'service_active' => array('label' => '🟣 サブスク有効 / サービス中', 'color' => '#7c3aed', 'bg' => '#f5f3ff'),
+        'sub_shipping' => array('label' => '🔄 サブスク有効 / 配送中', 'color' => '#4f46e5', 'bg' => '#eef2ff'),
+        'completed' => array('label' => (!empty($order->stripe_subscription_id) ? '継続中' : '発送済み'), 'color' => '#555', 'bg' => '#eee'),
+        'cancelled' => array('label' => 'キャンセル', 'color' => '#a00', 'bg' => '#fde'),
+    );
+    $method_labels = array(
+        'stripe' => 'クレジットカード',
+        'paypay' => 'PayPay',
+        'bank_transfer' => '銀行振込',
+        'cod' => '代金引換',
+    );
+
+    ?>
+    <div style="max-width:640px; margin:0 auto; font-family:sans-serif;">
+
+        <?php if (!$order): ?>
+            <!-- 照会フォーム -->
+            <div style="background:#f9f9f9; border:1px solid #ddd; border-radius:12px; padding:32px;">
+                <h3 style="margin-top:0;">📦 注文照会</h3>
+                <p style="color:#666; font-size:14px;">注文番号（確認メールに記載）とご注文時のメールアドレスを入力してください。</p>
+
+                <?php if ($error): ?>
+                    <div
+                        style="background:#fde; border-left:4px solid #a00; padding:12px 16px; border-radius:6px; margin-bottom:16px; color:#a00;">
+                        <?php echo esc_html($error); ?>
+                    </div>
+                <?php endif; ?>
+
+                <form method="post">
+                    <?php wp_nonce_field('pp_order_inquiry', 'pp_inquiry_nonce'); ?>
+                    <p>
+                        <label style="display:block; font-weight:bold; margin-bottom:6px;">注文番号 <span
+                                style="color:red;">*</span></label>
+                        <input type="text" name="pp_inquiry_token" required placeholder="例: 260310-ABCD"
+                            value="<?php echo esc_attr($_POST['pp_inquiry_token'] ?? ''); ?>"
+                            style="width:100%; padding:10px 14px; border:1px solid #ccc; border-radius:8px; font-size:15px; box-sizing:border-box;">
+                    </p>
+                    <p>
+                        <label style="display:block; font-weight:bold; margin-bottom:6px;">メールアドレス <span
+                                style="color:red;">*</span></label>
+                        <input type="email" name="pp_inquiry_email" required placeholder="ご注文時のメールアドレス"
+                            value="<?php echo esc_attr($_POST['pp_inquiry_email'] ?? ''); ?>"
+                            style="width:100%; padding:10px 14px; border:1px solid #ccc; border-radius:8px; font-size:15px; box-sizing:border-box;">
+                    </p>
+                    <button type="submit"
+                        style="background:#333; color:#fff; border:none; padding:12px 28px; border-radius:8px; font-size:15px; cursor:pointer; width:100%;">
+                        照会する
+                    </button>
+                </form>
+            </div>
+
+        <?php else: ?>
+            <!-- 注文詳細 -->
+            <?php
+            $items = json_decode($order->order_items, true);
+            $shipping = json_decode($order->shipping_info, true);
+
+            $has_shipping = false;
+            if (is_array($items)) {
+                foreach ($items as $it) {
+                    if ($it['format'] !== 'digital' && $it['format'] !== 'subscription') {
+                        $has_shipping = true;
+                        break;
+                    }
+                    if ($it['format'] === 'subscription') {
+                        if (get_post_meta($it['id'], '_photo_sub_requires_shipping', true) === '1') {
+                            $has_shipping = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            $status_info = $status_labels[$order->status] ?? array('label' => $order->status, 'color' => '#333', 'bg' => '#eee');
+            if (!$has_shipping) {
+                if ($order->status === 'processing') {
+                    $status_info['label'] = '決済完了 / サービス有効';
+                } elseif ($order->status === 'completed') {
+                    $status_info['label'] = '完了';
+                }
+            }
+            ?>
+            <div style="background:#f9f9f9; border:1px solid #ddd; border-radius:12px; padding:32px;">
+                <h3 style="margin-top:0;">📦 注文詳細</h3>
+
+                <!-- ステータスバッジ -->
+                <div style="margin-bottom:20px;">
+                    <span
+                        style="background:<?php echo esc_attr($status_info['bg']); ?>; color:<?php echo esc_attr($status_info['color']); ?>; padding:6px 16px; border-radius:20px; font-weight:bold; font-size:15px;">
+                        <?php echo esc_html($status_info['label']); ?>
+                    </span>
+                </div>
+
+                <table style="width:100%; border-collapse:collapse; font-size:14px;">
+                    <tr style="border-bottom:1px solid #eee;">
+                        <th style="text-align:left; padding:10px 0; color:#888; width:140px;">注文番号</th>
+                        <td style="padding:10px 0;"><?php echo esc_html($order->order_token); ?></td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #eee;">
+                        <th style="text-align:left; padding:10px 0; color:#888;">注文日</th>
+                        <td style="padding:10px 0;"><?php echo esc_html($order->created_at); ?></td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #eee;">
+                        <th style="text-align:left; padding:10px 0; color:#888;">お支払方法</th>
+                        <td style="padding:10px 0;">
+                            <?php echo esc_html($method_labels[$order->payment_method] ?? $order->payment_method); ?></td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #eee;">
+                        <th style="text-align:left; padding:10px 0; color:#888;">合計金額</th>
+                        <td style="padding:10px 0;"><strong>¥<?php echo number_format(intval($order->total_amount)); ?></strong>
+                            <div style="font-size:12px; color:#777; font-weight:normal; margin-top:4px;">
+                                <?php
+                                $shipping_fee = isset($shipping['fee']) ? intval($shipping['fee']) : 0;
+                                $cod_fee = isset($shipping['cod_fee']) ? intval($shipping['cod_fee']) : 0;
+                                
+                                $coupon_discount = 0;
+                                $coupon_code = '';
+                                if (!empty($order->coupon_info)) {
+                                    $coupon_data = json_decode($order->coupon_info, true);
+                                    if ($coupon_data) {
+                                        $coupon_discount = intval($coupon_data['applied_discount'] ?? 0);
+                                        $coupon_code = $coupon_data['code'] ?? '';
+                                    }
+                                }
+
+                                $items_amount = intval($order->total_amount) - $shipping_fee - $cod_fee + $coupon_discount;
+
+                                // Tax Breakdown using common helper
+                                $tax_results = photo_purchase_get_tax_breakdown($items, $shipping_fee, $cod_fee, $coupon_discount);
+
+                                echo '【内訳】<br>';
+                                echo '商品: ¥' . number_format($items_amount);
+                                if ($shipping_fee > 0) echo ' + 送料: ¥' . number_format($shipping_fee);
+                                if ($cod_fee > 0) echo ' + 代引き手数料: ¥' . number_format($cod_fee);
+                                if ($coupon_discount > 0) {
+                                    echo ' - 割引' . ($coupon_code ? ' (' . esc_html($coupon_code) . ')' : '') . ': ¥' . number_format($coupon_discount);
+                                }
+                                
+                                echo '<div style="margin-top:8px; border-top:1px dashed #ddd; padding-top:8px;">';
+                                foreach ($tax_results as $rate => $data) {
+                                    if ($data['target'] > 0) {
+                                        echo '・' . $rate . '%対象: ¥' . number_format($data['target']) . ' (内税 ¥' . number_format($data['tax']) . ')<br>';
+                                    }
+                                }
+                                echo '</div>';
+                                ?>
+                            </div>
+                        </td>
+                    </tr>
+                    <?php if (!empty($order->tracking_number)): ?>
+                        <tr style="border-bottom:1px solid #eee;">
+                            <th style="text-align:left; padding:10px 0; color:#888;">送り状番号</th>
+                            <td style="padding:10px 0; font-weight:bold;"><?php echo esc_html($order->tracking_number); ?></td>
+                        </tr>
+                    <?php endif; ?>
+                </table>
+                
+                <?php if (!empty($order->stripe_subscription_id)): ?>
+                    <div style="margin-top:24px; background:#eef2ff; border:1px solid #c7d2fe; border-radius:12px; padding:24px;">
+                        <h4 style="margin:0 0 8px 0; color:#4338ca;">💳 サブスクリプション管理</h4>
+                        <p style="margin:0 0 16px 0; font-size:13px; color:#6366f1;">お支払い方法の変更や、キャンセルの手続きはStripeのカスタマーポータルから行えます。</p>
+                        <?php
+                        $portal_url = function_exists('photo_purchase_create_portal_session') ? photo_purchase_create_portal_session($order->stripe_customer_id ?: '') : false;
+                        if ($portal_url): ?>
+                            <a href="<?php echo esc_url($portal_url); ?>" target="_blank" style="display:inline-block; background:#4338ca; color:#fff; text-decoration:none; padding:10px 20px; border-radius:8px; font-weight:bold; font-size:14px;">
+                                管理ポータルを開く
+                            </a>
+                        <?php else: ?>
+                            <p style="color:#e11d48; font-size:13px; margin:0;">管理ポータルへの接続に失敗しました。管理者にお問い合わせください。</p>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+
+                <!-- 購入商品一覧 -->
+                <h4 style="margin:24px 0 12px;">ご購入商品</h4>
+                <div style="border:1px solid #eee; border-radius:8px; overflow:hidden;">
+                    <?php
+                    if (is_array($items)):
+                        foreach ($items as $i => $item):
+                            $photo_id = intval($item['id']);
+                            $format = $item['format'] ?? '';
+                            $qty = intval($item['qty'] ?? 1);
+                            $title = get_the_title($photo_id) ?: '写真 #' . $photo_id;
+                            $fmt_lbl = photo_purchase_get_format_label($format);
+                            $bg = ($i % 2 === 0) ? '#fff' : '#f9f9f9';
+
+                            // デジタル商品のダウンロードURL生成
+                            $dl_url = '';
+                            if ($format === 'digital' && $order->status === 'processing' || $format === 'digital' && $order->status === 'completed') {
+                                if (function_exists('photo_purchase_generate_download_url')) {
+                                    $dl_url = photo_purchase_generate_download_url($order->order_token, $photo_id);
+                                }
+                            }
+                            ?>
+                            <div style="display:flex; align-items:center; padding:12px 16px; background:<?php echo $bg; ?>; gap:12px;">
+                                <div style="flex:1;">
+                                    <div style="font-weight:bold;"><?php echo esc_html($title); ?></div>
+                                    <div style="color:#888; font-size:13px;"><?php echo esc_html($fmt_lbl); ?> × <?php echo $qty; ?>
+                                    </div>
+                                </div>
+                                <?php if ($dl_url): ?>
+                                    <a class="button button-primary" href="<?php echo esc_url($dl_url); ?>" style="display:inline-block; margin-top:5px; padding: 4px 12px; font-size: 13px;">
+                                        ⬇ ダウンロード
+                                    </a>
+                                <?php endif; ?>
+                            </div>
+                            <?php
+                        endforeach;
+                    endif;
+                    ?>
+                </div>
+
+                <div style="margin-top:32px; padding-top:20px; border-top:1px solid #eee; display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
+                    <a href="<?php echo esc_url(get_permalink()); ?>" style="color:#666; font-size:13px; text-decoration:none;">← 別の注文を照会する</a>
+                    <div style="flex:1;"></div>
+                    <a href="<?php echo esc_url(add_query_arg(array('photo_purchase_action' => 'print_doc', 'order_id' => $order->id, 'type' => 'print_invoice'), home_url('/'))); ?>" target="_blank" style="display:inline-block; padding:10px 20px; background:#f8f9fa; border:1px solid #dee2e6; border-radius:8px; text-decoration:none; color:#495057; font-weight:bold; font-size:14px;">
+                        📄 納品書（請求書）
+                    </a>
+                    <?php if ($order->status !== 'pending_payment' && $order->status !== 'cancelled'): ?>
+                        <a href="<?php echo esc_url(add_query_arg(array('photo_purchase_action' => 'print_doc', 'order_id' => $order->id, 'type' => 'print_receipt'), home_url('/'))); ?>" target="_blank" style="display:inline-block; padding:10px 20px; background:#f8f9fa; border:1px solid #dee2e6; border-radius:8px; text-decoration:none; color:#495057; font-weight:bold; font-size:14px;">
+                            💰 領収書を発行
+                        </a>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php endif; ?>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+add_shortcode('ec_order_inquiry', 'photo_purchase_order_inquiry_shortcode');
+
+
+/**
+ * Helper: Securely hash email for transients
+ */
+function photo_purchase_hash_email($email) {
+    return md5(strtolower(trim($email)));
+}
+
+/**
+ * Handle Auth Request (Step 1: Send Code)
+ */
+function photo_purchase_handle_auth_request() {
+    if (!isset($_POST['pp_auth_email']) || !isset($_POST['pp_auth_nonce'])) return;
+    if (!wp_verify_nonce($_POST['pp_auth_nonce'], 'pp_auth_request')) {
+        return 'セキュリティエラーが発生しました。';
+    }
+
+    $email = sanitize_email($_POST['pp_auth_email']);
+    if (!is_email($email)) return '有効なメールアドレスを入力してください。';
+
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'photo_orders';
+    $order_exists = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $table_name WHERE buyer_email = %s", $email));
+
+    if (!$order_exists) {
+        return 'そのメールアドレスでの注文履歴が見つかりませんでした。';
+    }
+
+    // Generate 6-digit code
+    $code = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
+    $email_hash = photo_purchase_hash_email($email);
+    
+    // Store in transient for 15 minutes
+    set_transient('photo_pp_auth_' . $email_hash, $code, 15 * MINUTE_IN_SECONDS);
+
+    // Send Email
+    $seller_name = get_option('photo_pp_seller_name', get_bloginfo('name'));
+    $seller_email = get_option('photo_pp_seller_email', get_option('admin_email'));
+
+    $headers = array(
+        'Content-Type: text/plain; charset=UTF-8',
+        'From: ' . $seller_name . ' <' . $seller_email . '>'
+    );
+
+    $subject = '【認証コード】マイページログイン - ' . $seller_name;
+    $message = esc_html($email) . " 様\n\n";
+    $message .= "マイページへのログイン用認証コードをお送りいたします。\n";
+    $message .= "以下のコードを画面に入力してください：\n\n";
+    $message .= "--------------------------------------------------\n";
+    $message .= "認証コード: " . $code . "\n";
+    $message .= "--------------------------------------------------\n\n";
+    $message .= "※このコードの有効期限は15分間です。\n";
+    $message .= photo_purchase_get_email_footer('', $email);
+
+    wp_mail($email, $subject, $message, $headers);
+
+    // Store email in session to know who we're waiting for (Step 2)
+    $_SESSION['pp_auth_pending_email'] = $email;
+    return true;
+}
+
+/**
+ * Handle Auth Verify (Step 2: Check Code)
+ */
+function photo_purchase_handle_auth_verify() {
+    if (!isset($_POST['pp_auth_code']) || !isset($_POST['pp_auth_nonce_verify'])) return;
+    if (!wp_verify_nonce($_POST['pp_auth_nonce_verify'], 'pp_auth_verify')) {
+        return 'セキュリティエラーが発生しました。';
+    }
+
+    $email = $_SESSION['pp_auth_pending_email'] ?? '';
+    if (!$email) return 'セッションがタイムアウトしました。最初からやり直してください。';
+
+    $input_code = sanitize_text_field($_POST['pp_auth_code']);
+    $email_hash = photo_purchase_hash_email($email);
+    $stored_code = get_transient('photo_pp_auth_' . $email_hash);
+
+    if (!$stored_code || $input_code !== $stored_code) {
+        return '認証コードが正しくないか、有効期限が切れています。';
+    }
+
+    // Success: Create Session
+    delete_transient('photo_pp_auth_' . $email_hash);
+    unset($_SESSION['pp_auth_pending_email']);
+
+    $token = bin2hex(random_bytes(32));
+    set_transient('photo_pp_session_' . $token, $email, 24 * HOUR_IN_SECONDS);
+
+    // Set cookie for 24 hours
+    setcookie('photo_pp_auth_token', $token, time() + (24 * HOUR_IN_SECONDS), COOKIEPATH, COOKIE_DOMAIN, is_ssl(), true);
+    
+    // Redirect to clear POST
+    wp_safe_redirect(get_permalink());
+    exit;
+}
+
+/**
+ * Handle Logout
+ */
+function photo_purchase_handle_auth_logout() {
+    if (isset($_GET['pp_logout'])) {
+        $token = $_COOKIE['photo_pp_auth_token'] ?? '';
+        if ($token) {
+            delete_transient('photo_pp_session_' . $token);
+            setcookie('photo_pp_auth_token', '', time() - 3600, COOKIEPATH, COOKIE_DOMAIN);
+        }
+        wp_safe_redirect(get_permalink());
+        exit;
+    }
+}
+add_action('template_redirect', 'photo_purchase_handle_auth_logout');
+
+/**
+ * Verify Session and Get Current User Email
+ */
+function photo_purchase_get_auth_email() {
+    $token = $_COOKIE['photo_pp_auth_token'] ?? '';
+    if (!$token) return false;
+
+    $email = get_transient('photo_pp_session_' . $token);
+    return $email ?: false;
+}
+
+/**
+ * Shortcode: Customer Portal [ec_customer_portal] (Enhanced with Auth Login)
+ */
+function photo_purchase_customer_portal_shortcode($atts)
+{
+    // Start session if not started
+    if (!session_id()) session_start();
+
+    $auth_email = photo_purchase_get_auth_email();
+    $auth_error = '';
+
+    // Handle Auth Actions
+    if (isset($_POST['pp_auth_email'])) {
+        $res = photo_purchase_handle_auth_request();
+        if ($res !== true) $auth_error = $res;
+    } elseif (isset($_POST['pp_auth_code'])) {
+        $res = photo_purchase_handle_auth_verify();
+        if ($res !== true) $auth_error = $res;
+    }
+
+    ob_start();
+    ?>
+    <div class="photo-purchase-portal" style="max-width:800px; margin:0 auto; font-family:sans-serif;">
+
+    <?php if (!$auth_email): ?>
+        <!-- Login Form -->
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:16px; padding:40px; text-align:center;">
+            <h2 style="margin-top:0; color:#1e293b;">📦 マイページログイン</h2>
+            
+            <?php if ($auth_error): ?>
+                <div style="background:#fef2f2; border-left:4px solid #ef4444; padding:12px; margin-bottom:20px; color:#b91c1c; text-align:left;">
+                    <?php echo esc_html($auth_error); ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if (isset($_SESSION['pp_auth_pending_email'])): ?>
+                <!-- Step 2: Code Verification -->
+                <p style="color:#64748b; margin-bottom:24px;">
+                    <strong><?php echo esc_html($_SESSION['pp_auth_pending_email']); ?></strong> 宛てに認証コードを送信しました。<br>
+                    メールを確認し、6桁のコードを入力してください。
+                </p>
+                <form method="post" style="display:flex; flex-direction:column; gap:16px; align-items:center;">
+                    <?php wp_nonce_field('pp_auth_verify', 'pp_auth_nonce_verify'); ?>
+                    <input type="text" name="pp_auth_code" placeholder="000000" required maxlength="6"
+                           style="padding:15px; border-radius:10px; border:2px solid #cbd5e1; width:100%; max-width:200px; text-align:center; font-size:24px; letter-spacing:8px; font-weight:bold;">
+                    <button type="submit" class="button" style="background:#4f46e5; color:#fff; padding:12px 40px; border:none; border-radius:10px; cursor:pointer; font-weight:bold; width:100%; max-width:200px;">
+                        ログイン
+                    </button>
+                    <a href="<?php echo add_query_arg('reset_auth', '1'); ?>" style="color:#6366f1; font-size:14px; text-decoration:none;">別のメールアドレスを使う</a>
+                </form>
+                <?php if (isset($_GET['reset_auth'])) { unset($_SESSION['pp_auth_pending_email']); wp_safe_redirect(get_permalink()); exit; } ?>
+            <?php else: ?>
+                <!-- Step 1: Email Input -->
+                <p style="color:#64748b; margin-bottom:24px;">ご注文時のメールアドレスを入力してください。<br>ログイン用の認証コードをお送りします。</p>
+                <form method="post" style="display:flex; flex-direction:column; gap:16px; align-items:center;">
+                    <?php wp_nonce_field('pp_auth_request', 'pp_auth_nonce'); ?>
+                    <input type="email" name="pp_auth_email" placeholder="example@mail.com" required
+                           style="padding:15px; border-radius:10px; border:2px solid #cbd5e1; width:100%; max-width:400px; font-size:16px;">
+                    <button type="submit" class="button" style="background:#4f46e5; color:#fff; padding:12px 40px; border:none; border-radius:10px; cursor:pointer; font-weight:bold; width:100%; max-width:400px;">
+                        認証コードを送信
+                    </button>
+                </form>
+            <?php endif; ?>
+        </div>
+
+    <?php else: ?>
+        <!-- Logged In: Dashboard -->
+        <div style="margin-bottom:30px; display:flex; justify-content:space-between; align-items:center; background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0;">
+            <div>
+                <span style="color:#64748b; font-size:14px;">ログイン中:</span><br>
+                <strong style="font-size:18px; color:#1e293b;"><?php echo esc_html($auth_email); ?></strong>
+            </div>
+            <a href="<?php echo add_query_arg('pp_logout', '1'); ?>" style="color:#ef4444; font-size:14px; text-decoration:none; border:1px solid #fee2e2; padding:8px 16px; border-radius:8px; background:#fef2f2;">ログアウト</a>
+        </div>
+
+        <?php
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'photo_orders';
+        $orders = $wpdb->get_results($wpdb->prepare("SELECT * FROM $table_name WHERE buyer_email = %s ORDER BY created_at DESC", $auth_email));
+        
+        // Subscription check across all orders
+        $subscription_customer_id = '';
+        foreach ($orders as $o) {
+            if (!empty($o->stripe_customer_id)) {
+                $subscription_customer_id = $o->stripe_customer_id;
+                break;
+            }
+        }
+        ?>
+
+        <?php if ($subscription_customer_id): ?>
+            <!-- Stripe Portal Link -->
+            <div style="background:linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); border-radius:16px; padding:32px; color:#fff; text-align:center; margin-bottom:40px; box-shadow:0 10px 15px -3px rgba(79, 70, 229, 0.2);">
+                <h3 style="margin:0 0 12px 0; color:#fff; display:flex; align-items:center; justify-content:center; gap:10px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                    プラン管理・支払い方法の変更
+                </h3>
+                <p style="margin:0 0 24px 0; color:#e0e7ff; font-size:15px;">解約の手続きや、登録済みクレジットカードの更新はこちらから行えます。</p>
+                <?php 
+                $portal_url = function_exists('photo_purchase_create_portal_session') ? photo_purchase_create_portal_session($subscription_customer_id) : false;
+                if ($portal_url): ?>
+                    <a href="<?php echo esc_url($portal_url); ?>" target="_blank"
+                       style="display:inline-block; background:#fff; color:#4f46e5; text-decoration:none; padding:14px 40px; border-radius:12px; font-weight:bold; font-size:16px; transition:transform 0.2s;">
+                        Stripeカスタマーポータルを開く
+                    </a>
+                <?php else: ?>
+                    <p style="color:#fecaca;">ポータルへの接続に失敗しました。管理者へお問い合わせください。</p>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
+
+        <!-- Order History -->
+        <h3 style="display:flex; align-items:center; gap:10px; color:#1e293b; margin-bottom:20px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
+            注文履歴の一覧
+        </h3>
+
+        <?php if ($orders): ?>
+            <div style="display:flex; flex-direction:column; gap:16px;">
+                <?php foreach ($orders as $order): 
+                    $items_data = json_decode($order->order_items, true) ?: array();
+                    $status_info = array(
+                        'pending_payment' => array('label' => '入金待ち', 'color' => '#f59e0b', 'bg' => '#fef3c7'),
+                        'processing'      => array('label' => '完了', 'color' => '#10b981', 'bg' => '#ecfdf5'),
+                        'completed'       => array('label' => '発送済み', 'color' => '#3b82f6', 'bg' => '#eff6ff'),
+                        'service_active'  => array('label' => 'サービス中 / 継続中', 'color' => '#7c3aed', 'bg' => '#f5f3ff'),
+                        'sub_shipping'    => array('label' => '配送開始 / 継続中', 'color' => '#4f46e5', 'bg' => '#eef2ff'),
+                        'cancelled'       => array('label' => 'キャンセル', 'color' => '#ef4444', 'bg' => '#fef2f2'),
+                    );
+                    $current_status = $status_info[$order->status] ?? array('label' => $order->status, 'color' => '#64748b', 'bg' => '#f1f5f9');
+                    
+                    $is_sub_order = !empty($order->stripe_subscription_id);
+                    $has_shippable = false;
+                    foreach ($items_data as $it) {
+                        if ($it['format'] !== 'digital') {
+                            if ($it['format'] === 'subscription') {
+                                if (get_post_meta($it['id'], '_photo_sub_requires_shipping', true) === '1') $has_shippable = true;
+                            } else {
+                                $has_shippable = true;
+                            }
+                        }
+                    }
+
+                    // Specific labels for service-based subscriptions
+                    if ($order->status === 'processing') {
+                        if (!$has_shippable) {
+                            $current_status['label'] = 'サービス有効 / 完了';
+                        } else {
+                            $current_status['label'] = '決済完了 / 発送準備中';
+                        }
+                    } elseif ($order->status === 'completed' && $is_sub_order && $has_shippable) {
+                        $current_status['label'] = '配送開始 / 継続中';
+                    }
+                ?>
+                    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:20px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid #f1f5f9;">
+                            <div style="font-family:monospace; font-size:15px; font-weight:bold; color:#1e293b;">
+                                <?php echo esc_html($order->order_token); ?>
+                            </div>
+                            <div style="background:<?php echo $current_status['bg']; ?>; color:<?php echo $current_status['color']; ?>; padding:4px 12px; border-radius:30px; font-size:12px; font-weight:bold;">
+                                <?php echo esc_html($current_status['label']); ?>
+                            </div>
+                        </div>
+                        <div style="font-size:13px; color:#64748b; margin-bottom:10px;">
+                            <?php echo date('Y/m/d H:i', strtotime($order->created_at)); ?> | 
+                            <?php echo number_format($order->total_amount); ?> 円
+                            <?php 
+                                if (!empty($order->coupon_info)) {
+                                    $coupon_data = json_decode($order->coupon_info, true);
+                                    if ($coupon_data && !empty($coupon_data['code'])) {
+                                        $dur_lbl = '';
+                                        if (isset($coupon_data['stripe_duration'])) {
+                                            $dur_lbl = ($coupon_data['stripe_duration'] === 'forever') ? ' (永続)' : (($coupon_data['stripe_duration'] === 'repeating') ? ' (' . ($coupon_data['stripe_months'] ?? 0) . 'ヶ月)' : ' (初回のみ)');
+                                        }
+                                        echo ' | <span style="color:#e11d48; font-weight:bold;">割引(-' . number_format($coupon_data['applied_discount']) . '円' . $dur_lbl . ')</span>';
+                                    }
+                                }
+                            ?>
+                             | 
+                            <?php 
+                                $methods = array('stripe' => 'カード', 'cod' => '代引き', 'bank_transfer' => '銀行振込', 'paypay' => 'PayPay');
+                                echo $methods[$order->payment_method] ?? $order->payment_method;
+                            ?>
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:6px;">
+                            <?php foreach ($items_data as $it): 
+                                $is_digital = ($it['format'] === 'digital');
+                                $dl_url = '';
+                                if ($is_digital && in_array($order->status, array('processing', 'completed'))) {
+                                    $dl_url = photo_purchase_generate_download_url($order->order_token, $it['id']);
+                                }
+                            ?>
+                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                    <div style="font-size:14px; color:#334155;">
+                                        • <?php echo esc_html(get_the_title($it['id'])); ?> 
+                                        <small style="color:#94a3b8;">(<?php echo photo_purchase_get_format_label($it['format']); ?> x<?php echo $it['qty']; ?>)</small>
+                                        <?php if ($it['format'] === 'subscription'):
+                                            $_cnt = get_post_meta($it['id'], '_photo_sub_interval_count', true) ?: '1';
+                                            $_inv = get_post_meta($it['id'], '_photo_sub_interval', true) ?: 'month';
+                                            $_inv_l = array('day' => '日', 'week' => '週', 'month' => 'ヶ月', 'year' => '年');
+                                            $_cycle = $_cnt . ($_inv_l[$_inv] ?? $_inv) . 'ごと';
+                                        ?>
+                                        <br><small style="color:#6366f1; font-weight:bold;">🔄 <?php echo esc_html($_cycle); ?> の自動更新</small>
+                                        <?php endif; ?>
+                                    </div>
+                                    <?php if ($dl_url): ?>
+                                        <a href="<?php echo esc_url($dl_url); ?>" style="font-size:12px; color:#4f46e5; text-decoration:none; background:#eef2ff; padding:4px 10px; border-radius:6px; border:1px solid #c7d2fe;">⬇ ダウンロード</a>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+
+                        <?php 
+                            $is_sub_order = !empty($order->stripe_customer_id);
+                            // Fallback: check if any item format is subscription
+                            if (!$is_sub_order && $items_data) {
+                                foreach ($items_data as $it) {
+                                    if ($it['format'] === 'subscription') { $is_sub_order = true; break; }
+                                }
+                            }
+                            if ($is_sub_order): ?>
+                            <div style="margin-top:15px; padding-top:15px; border-top:1px dashed #e2e8f0; text-align:right;">
+                                <?php if (!empty($order->stripe_customer_id)): ?>
+                                <form action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post" target="_blank">
+                                    <input type="hidden" name="action" value="photo_purchase_billing_portal">
+                                    <input type="hidden" name="customer_id" value="<?php echo esc_attr($order->stripe_customer_id); ?>">
+                                    <button type="submit" style="background:#4f46e5; color:#fff; border:none; padding:8px 16px; border-radius:8px; font-size:13px; font-weight:bold; cursor:pointer;">
+                                        サブスクリプションの管理・解除
+                                    </button>
+                                </form>
+                                <?php else: ?>
+                                <p style="color:#94a3b8; font-size:12px;">※ Stripe顧客IDが未設定のため、管理リンクを生成できません。<br>注文編集画面からStripe Customer IDを入力してください。</p>
+                                <?php endif; ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php else: ?>
+            <p style="color:#94a3b8; text-align:center; padding:40px; background:#f8fafc; border-radius:12px;">まだ注文履歴がありません。</p>
+        <?php endif; ?>
+
+    <?php endif; ?>
+    </div>
+    <script>
+    // Ensure dashicons are loaded for the font
+    if (!document.getElementById('dashicons-css')) {
+        const link = document.createElement('link');
+        link.id = 'dashicons-css';
+        link.rel = 'stylesheet';
+        link.href = '/wp-includes/css/dashicons.min.css';
+        document.head.appendChild(link);
+    }
+    </script>
+    <?php
+    return ob_get_clean();
+}
+add_shortcode('ec_customer_portal', 'photo_purchase_customer_portal_shortcode');
+
+/**
+ * Handle Billing Portal Redirect
+ */
+function photo_purchase_handle_billing_portal_redirect() {
+    if (!isset($_POST['customer_id'])) {
+        wp_die('Missing customer ID');
+    }
+    $customer_id = sanitize_text_field($_POST['customer_id']);
+
+    if (empty($customer_id)) {
+        wp_die('Customer ID が設定されていません。管理画面の注文編集画面から Stripe Customer ID を入力してください。');
+    }
+
+    // Simple verification
+    if (!isset($_COOKIE['photo_pp_auth_token'])) {
+        wp_die('Unauthorized: セッションが切れています。マイページにログインし直してください。');
+    }
+
+    $secret_key = get_option('photo_pp_stripe_secret_key');
+    if (!$secret_key) {
+        wp_die('Stripe シークレットキーが設定されていません。管理画面の各種設定を確認してください。');
+    }
+
+    $return_url = home_url();
+    $args = array(
+        'headers' => array(
+            'Authorization' => 'Bearer ' . $secret_key,
+            'Content-Type' => 'application/x-www-form-urlencoded',
+        ),
+        'body' => http_build_query(array(
+            'customer' => $customer_id,
+            'return_url' => $return_url,
+        )),
+        'timeout' => 20,
+    );
+
+    $response = wp_remote_post('https://api.stripe.com/v1/billing_portal/sessions', $args);
+
+    if (is_wp_error($response)) {
+        wp_die('Stripe API エラー: ' . esc_html($response->get_error_message()));
+    }
+
+    $body = json_decode(wp_remote_retrieve_body($response), true);
+
+    if (!empty($body['url'])) {
+        wp_redirect($body['url']);
+        exit;
+    }
+
+    // Show detailed Stripe error
+    $stripe_error = $body['error']['message'] ?? '不明なエラー';
+    $stripe_type = $body['error']['type'] ?? '';
+    wp_die(
+        '<h2>Stripe カスタマーポータルのセッション作成に失敗しました</h2>' .
+        '<p><strong>エラー:</strong> ' . esc_html($stripe_error) . '</p>' .
+        '<p><strong>種別:</strong> ' . esc_html($stripe_type) . '</p>' .
+        '<p><strong>Customer ID:</strong> ' . esc_html($customer_id) . '</p>' .
+        '<p>Stripeダッシュボードで <a href="https://dashboard.stripe.com/settings/billing/portal" target="_blank">カスタマーポータルの設定</a> を有効化しているか確認してください。</p>' .
+        '<p><a href="javascript:history.back()">← 戻る</a></p>'
+    );
+}
+add_action('admin_post_photo_purchase_billing_portal', 'photo_purchase_handle_billing_portal_redirect');
+add_action('admin_post_nopriv_photo_purchase_billing_portal', 'photo_purchase_handle_billing_portal_redirect');
+
+/**
+ * AJAX: Update Order Status
+ */
+function photo_purchase_handle_order_status_ajax()
+{
+    check_ajax_referer('photo_update_order_status_ajax', 'nonce');
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error('Unauthorized');
+    }
+	
+	
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'photo_orders';
+    $order_id = intval($_POST['order_id']);
+    $status = sanitize_text_field($_POST['status']);
+
+    $updated = $wpdb->update($table_name, array('status' => $status), array('id' => $order_id));
+    if ($updated !== false) {
+        // Stock Management: If changed to cancelled, return stock
+        if ($status === 'cancelled') {
+            photo_purchase_update_stock_for_order($order_id, true);
+        }
+        
+        photo_purchase_send_status_update_notification($order_id, $status);
+        wp_send_json_success();
+    } else {
+        wp_send_json_error('Database error');
+    }
+}
+add_action('wp_ajax_photo_update_order_status_ajax', 'photo_purchase_handle_order_status_ajax');
+
+/**
+ * Helper: Calculate tax breakdown for invoice compliance
+ */
+function photo_purchase_get_tax_breakdown($items, $shipping = 0, $cod = 0, $discount = 0) {
+    if (!is_array($items)) return array();
+    
+    $breakdown = array();
+    $total_before_discount = 0;
+    
+    $rate_standard = intval(get_option('photo_pp_tax_rate_standard', '10'));
+    
+    foreach ($items as $item) {
+        $rate = intval($item['tax_rate'] ?? $rate_standard);
+        $price = intval($item['price'] ?? 0);
+        $opts = intval($item['options_total'] ?? 0);
+        $qty = intval($item['qty'] ?? 1);
+        $subtotal = ($price + $opts) * $qty;
+        
+        if (!isset($breakdown[$rate])) $breakdown[$rate] = 0;
+        $breakdown[$rate] += $subtotal;
+        $total_before_discount += $subtotal;
+    }
+    
+    // Add fees to standard rate
+    if (!isset($breakdown[$rate_standard])) $breakdown[$rate_standard] = 0;
+    $breakdown[$rate_standard] += intval($shipping) + intval($cod);
+    $total_before_discount += intval($shipping) + intval($cod);
+    
+    // Apply discount proportionally if exists
+    if ($discount > 0 && $total_before_discount > 0) {
+        $remaining_discount = $discount;
+        $rates = array_keys($breakdown);
+        foreach ($rates as $index => $rate) {
+            if ($index === count($rates) - 1) {
+                $breakdown[$rate] = max(0, $breakdown[$rate] - $remaining_discount); // Apply remainder safely
+            } else {
+                $proportion = $breakdown[$rate] / $total_before_discount;
+                $dist_discount = floor($discount * $proportion);
+                $breakdown[$rate] = max(0, $breakdown[$rate] - $dist_discount);
+                $remaining_discount -= $dist_discount;
+            }
+        }
+    }
+    
+    $results = array();
+    foreach ($breakdown as $rate => $target) {
+        $tax = floor($target * ($rate / (100 + $rate)));
+        $results[$rate] = array(
+            'target' => $target,
+            'tax' => $tax
+        );
+    }
+    ksort($results); // Sort by rate (8, 10...)
+    return $results;
+}
+
+/**
+ * Helper: Update stock for an order (increment/decrement)
+ */
+function photo_purchase_update_stock_for_order($order_id, $is_increment = true) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'photo_orders';
+    $order = $wpdb->get_row($wpdb->prepare("SELECT order_items, coupon_info FROM $table_name WHERE id = %d", $order_id));
+    
+    if (!$order) return;
+    
+    // Product stock management
+    if (!empty($order->order_items)) {
+        $items = json_decode($order->order_items, true);
+        if (is_array($items)) {
+            foreach ($items as $item) {
+                $product_id = intval($item['id']);
+                $qty = intval($item['qty'] ?? 1);
+                
+                $manage_stock = get_post_meta($product_id, '_photo_manage_stock', true) === '1';
+                if ($manage_stock) {
+                    $current_stock = intval(get_post_meta($product_id, '_photo_stock_qty', true));
+                    if ($is_increment) {
+                        $new_stock = $current_stock + $qty;
+                    } else {
+                        $new_stock = max(0, $current_stock - $qty);
+                    }
+                    update_post_meta($product_id, '_photo_stock_qty', $new_stock);
+                }
+            }
+        }
+    }
+
+    // Coupon usage management
+    if (!empty($order->coupon_info)) {
+        $coupon_data = json_decode($order->coupon_info, true);
+        if ($coupon_data && !empty($coupon_data['code'])) {
+            $coupon_code = $coupon_data['code'];
+            $coupon_table = $wpdb->prefix . 'photo_coupons';
+            if ($is_increment) {
+                // Return coupon usage (decrement usage_count)
+                $wpdb->query($wpdb->prepare(
+                    "UPDATE $coupon_table SET usage_count = GREATEST(0, usage_count - 1) WHERE code = %s",
+                    $coupon_code
+                ));
+            } else {
+                // Normally handled in save_order, but for completeness:
+                $wpdb->query($wpdb->prepare(
+                    "UPDATE $coupon_table SET usage_count = usage_count + 1 WHERE code = %s",
+                    $coupon_code
+                ));
+            }
+        }
+    }
+}
+
+/**
+ * Check if stock alert notification should be sent
+ */
+function photo_purchase_check_stock_alert($product_id) {
+    $manage_stock = get_post_meta($product_id, '_photo_manage_stock', true);
+    if ($manage_stock !== '1') {
+        return;
+    }
+
+    $current_stock = intval(get_post_meta($product_id, '_photo_stock_qty', true));
+    $threshold = intval(get_option('photo_pp_stock_threshold', '5'));
+
+    // If stock is above threshold, reset the "alert sent" flag
+    if ($current_stock > $threshold) {
+        delete_post_meta($product_id, '_photo_stock_alert_sent');
+        return;
+    }
+
+    // If stock is below or equal to threshold
+    $alert_sent_for = get_post_meta($product_id, '_photo_stock_alert_sent', true);
+    
+    // If alert already sent for this stock level or lower, don't send again
+    if ($alert_sent_for !== '') {
+        return; 
+    }
+
+    // Send Alert Email
+    $admin_email = get_option('photo_pp_admin_notification_email', get_option('admin_email'));
+    $shop_name = get_option('photo_pp_seller_name', get_bloginfo('name'));
+    $product_title = get_the_title($product_id);
+
+    $subject = '【在庫不足アラート】' . $product_title;
+    
+    $message = "以下の商品の在庫が設定したしきい値を下回りました。\n\n";
+    $message .= "商品名: " . $product_title . "\n";
+    $message .= "現在の在庫数: " . $current_stock . " 個\n";
+    $message .= "設定しきい値: " . $threshold . " 個以下\n\n";
+    $message .= "商品管理画面から在庫の補充を行ってください。\n";
+    $message .= admin_url('post.php?post=' . $product_id . '&action=edit') . "\n\n";
+    $message .= "--- \n" . $shop_name;
+
+    $from_email = get_option('photo_pp_seller_email', get_option('admin_email'));
+    $headers = array('Content-Type: text/plain; charset=UTF-8', "From: $shop_name <$from_email>");
+
+    $footer = function_exists('photo_purchase_get_email_footer') ? photo_purchase_get_email_footer() : '';
+    $message .= "\n---\n" . $footer;
+
+    if (wp_mail($admin_email, $subject, $message, $headers)) {
+        // Mark as alert sent.
+        update_post_meta($product_id, '_photo_stock_alert_sent', '1');
+    }
+}

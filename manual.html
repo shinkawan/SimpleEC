@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>シンプルECプラグイン 管理マニュアル</title>
+  <style>
+    :root {
+      --primary: #e8a0bf;
+      --primary-dark: #c47a9a;
+      --accent: #333;
+      --bg: #fdf8fb;
+      --card: #fff;
+      --border: #f0e0eb;
+      --text: #333;
+      --muted: #888;
+      --success: #1a7a2e;
+      --success-bg: #eaffea;
+      --warning: #d98c00;
+      --warning-bg: #fff9e6;
+      --danger: #a00;
+      --danger-bg: #fde;
+      --info: #005fa3;
+      --info-bg: #e6f4ff;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.8;
+    }
+
+    /* ---- Header ---- */
+    header {
+      background: linear-gradient(135deg, #e8a0bf 0%, #c47a9a 100%);
+      color: #fff;
+      padding: 48px 32px 36px;
+      text-align: center;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    header p {
+      font-size: 1rem;
+      opacity: .85;
+    }
+
+    .version-badge {
+      display: inline-block;
+      background: rgba(255, 255, 255, .25);
+      padding: 2px 12px;
+      border-radius: 20px;
+      font-size: .85rem;
+      margin-top: 10px;
+    }
+
+    /* ---- Layout ---- */
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+
+    .toc {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px 28px;
+      margin-bottom: 40px;
+    }
+
+    .toc h2 {
+      font-size: 1rem;
+      color: var(--primary-dark);
+      margin-bottom: 12px;
+    }
+
+    .toc ol {
+      padding-left: 20px;
+    }
+
+    .toc li {
+      margin: 4px 0;
+    }
+
+    .toc a {
+      color: var(--primary-dark);
+      text-decoration: none;
+      font-size: .95rem;
+    }
+
+    .toc a:hover {
+      text-decoration: underline;
+    }
+
+    /* ---- Sections ---- */
+    section {
+      margin-bottom: 48px;
+    }
+
+    section h2 {
+      font-size: 1.4rem;
+      border-left: 5px solid var(--primary);
+      padding-left: 14px;
+      margin-bottom: 20px;
+      color: var(--accent);
+    }
+
+    section h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin: 24px 0 10px;
+      color: var(--accent);
+    }
+
+    p {
+      margin-bottom: 10px;
+    }
+
+    /* ---- Cards ---- */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 16px;
+    }
+
+    .card h4 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    /* ---- Alert boxes ---- */
+    .alert {
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-bottom: 14px;
+      font-size: .95rem;
+    }
+
+    .alert-info {
+      background: var(--info-bg);
+      border-left: 4px solid var(--info);
+      color: var(--info);
+    }
+
+    .alert-success {
+      background: var(--success-bg);
+      border-left: 4px solid var(--success);
+      color: var(--success);
+    }
+
+    .alert-warning {
+      background: var(--warning-bg);
+      border-left: 4px solid var(--warning);
+      color: var(--warning);
+    }
+
+    .alert-danger {
+      background: var(--danger-bg);
+      border-left: 4px solid var(--danger);
+      color: var(--danger);
+    }
+
+    /* ---- Badges ---- */
+    .badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: .82rem;
+      font-weight: 700;
+    }
+
+    .badge-pending {
+      background: var(--warning-bg);
+      color: var(--warning);
+    }
+
+    .badge-processing {
+      background: var(--success-bg);
+      color: var(--success);
+    }
+
+    .badge-completed {
+      background: #eee;
+      color: #555;
+    }
+
+    .badge-cancelled {
+      background: var(--danger-bg);
+      color: var(--danger);
+    }
+
+    /* ---- Table ---- */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .93rem;
+      margin-bottom: 16px;
+    }
+
+    th {
+      background: #f8f0f5;
+      padding: 10px 14px;
+      text-align: left;
+      font-weight: 700;
+      border-bottom: 2px solid var(--border);
+    }
+
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    /* ---- Steps ---- */
+    .steps {
+      counter-reset: step;
+    }
+
+    .step {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+
+    .step-num {
+      counter-increment: step;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 700;
+      min-width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: .9rem;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .step-body {
+      flex: 1;
+    }
+
+    .step-body strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    /* ---- Shortcode ---- */
+    .shortcode {
+      background: #2d2d2d;
+      color: #e8e8e8;
+      padding: 12px 18px;
+      border-radius: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 1rem;
+      margin: 10px 0;
+    }
+
+    /* ---- Footer ---- */
+    footer {
+      text-align: center;
+      padding: 32px;
+      font-size: .85rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      margin-top: 32px;
+    }
+
+    /* ---- Buttons sample ---- */
+    .btn-sample {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: .85rem;
+      border: 1px solid currentColor;
+    }
+
+    @media (max-width: 640px) {
+      header h1 {
+        font-size: 1.4rem;
+      }
+
+      section h2 {
+        font-size: 1.2rem;
+      }
+
+      .container {
+        padding: 20px 16px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <h1>🛒シンプルECプラグイン</h1>
+    <p>管理者・オーナー向けマニュアル</p>
+    <div class="version-badge">v3.8.0 (インボイス・帳票・一括編集・在庫アラート搭載版)</div>
+  </header>
+
+  <div class="container">
+
+    <!-- 目次 -->
+    <nav class="toc">
+      <h2>📋 目次</h2>
+      <ol>
+        <li><a href="#overview">プラグイン概要</a></li>
+        <li><a href="#setup">初期設定（決済・基本設定）</a></li>
+        <li><a href="#photo">商品の登録・管理</a></li>
+        <li><a href="#bulk">メディアライブラリからの一括登録</a></li>
+        <li><a href="#order">注文管理（受注一覧）</a></li>
+        <li><a href="#status">注文ステータスフロー</a></li>
+        <li><a href="#actions">各種アクション操作（自動返金・再送）</a></li>
+        <li><a href="#coupon">クーポン設定・管理</a></li>
+        <li><a href="#subscription">サブスクリプション機能 [v3.0.0]</a></li>
+        <li><a href="#inquiry">購入者向け注文照会ページ</a></li>
+        <li><a href="#download">ダウンロード管理</a></li>
+        <li><a href="#csv-bulk">商品CSV一括編集 [v3.7.0]</a></li>
+        <li><a href="#stock-alert">在庫アラート機能 [v3.7.1]</a></li>
+        <li><a href="#shortcodes">利用可能なショートコード一覧</a></li>
+        <li><a href="#security">セキュリティと信頼性</a></li>
+        <li><a href="#faq">よくある質問</a></li>
+      </ol>
+    </nav>
+
+    <!-- 1. 概要 -->
+    <section id="overview">
+      <h2>1. プラグイン概要</h2>
+      <p>このプラグインはWordPress上で汎用的な商品を販売するための機能をすべて提供します。</p>
+      <div class="card">
+        <h4>✅ 主な機能</h4>
+        <table>
+          <tr>
+            <th>機能</th>
+            <th>説明</th>
+          </tr>
+          <tr>
+            <td>商品販売</td>
+            <td>ダウンロード版・配送品の2形式に対応</td>
+          </tr>
+          <tr>
+            <td>決済</td>
+            <td>クレジットカード・PayPay（Stripe）・銀行振込・代金引換</td>
+          </tr>
+          <tr>
+            <td>クーポン</td>
+            <td>割引コード（定額・定率）の発行と管理</td>
+          </tr>
+          <tr>
+            <td>注文管理</td>
+            <td>受注一覧から全注文を一括管理</td>
+          </tr>
+          <tr>
+            <td>メール通知</td>
+            <td>注文確認・キャンセル・発送通知メールを自動送信</td>
+          </tr>
+          <tr>
+            <td>ダウンロード管理</td>
+            <td>デジタル販売の有効期限・回数制限</td>
+          </tr>
+          <tr>
+            <td>CSV出力</td>
+            <td>売上データをCSVエクスポート（確定申告対応）</td>
+          </tr>
+          <tr>
+            <td>注文照会</td>
+            <td>購入者が自分で注文状況を確認できるページ</td>
+          </tr>
+          <tr>
+            <td>送料計算</td>
+            <td>住所入力後に自動計算（通常配送商品のみ）</td>
+          </tr>
+          <tr>
+            <td>在庫アラート</td>
+            <td>設定した在庫数を下回った際に管理者にメール通知</td>
+          </tr>
+        </table>
+      </div>
+    </section>
+
+    <!-- 2. 初期設定 -->
+    <section id="setup">
+      <h2>2. 初期設定</h2>
+      <p>WordPress管理画面 → <strong>各種商品 → 各種設定</strong> から設定を行います。</p>
+
+      <h3>📌 設定項目（各種設定タブ）</h3>
+      <table>
+        <tr>
+          <th>タブ</th>
+          <th>項目</th>
+          <th>説明</th>
+        </tr>
+        <tr>
+          <td>一般設定</td>
+          <td>表示用店舗名</td>
+          <td>注文メールや領収書の送り主名として使用されます（初期値：サイト名）</td>
+        </tr>
+        <tr>
+          <td>決済設定</td>
+          <td>決済方法のON/OFF</td>
+          <td>カード、PayPay、銀行振込、代金引換の利用可否を切り替えます</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>Stripe APIキー / Webhook秘密鍵</td>
+          <td>
+            カード・PayPay決済に必要な公開可能キーとシークレットキーを設定します。<br>
+            サブスクリプションの解約同期や安全な通信（署名検証）には<strong>Webhook秘密鍵</strong>の設定が必須です。
+          </td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>デジタル販売設定</td>
+          <td>
+            ダウンロード商品の有効期限（日数）と上限回数を設定できます。<br>
+            0を指定すると無期限・無制限になります。
+          </td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>代引き手数料</td>
+          <td>
+            代金引換が選択された際に加算される手数料を設定します。<br>
+            配送総額に応じた段階料金（ティア設定）を自由にカスタマイズ可能です。
+          </td>
+        </tr>
+        <tr>
+          <td>支払い/特商法</td>
+          <td>標準税率 / 軽減税率</td>
+          <td>標準税率（10%）と軽減税率（8%）の数値を設定します</td>
+        </tr>
+        <tr>
+          <td>銀行口座</td>
+          <td>お振込先案内</td>
+          <td>銀行振込が選択された際に購入者へ案内する口座情報を登録します</td>
+        </tr>
+        <tr>
+          <td>送料設定</td>
+          <td>全国一律送料</td>
+          <td>基本となる送料（円）を設定します</td>
+        </tr>
+        <tr>
+          <td>特定商取引法</td>
+          <td>各表示項目</td>
+          <td>ネット販売に必須の特定商取引法に基づく表記を編集します（販売形式がサブスクリプションの場合は、課金周期や解約方法の追記が義務付けられています）。<code>[ec_tokushoho]</code>で表示可能です</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>登録番号 (T番号)</td>
+          <td>
+            適格請求書発行事業者登録番号（T番号）を設定します。<br>
+            設定すると、各通知メール、受注詳細画面、印刷用納品書・領収書に自動的に表示され、<strong>適格請求書（インボイス）</strong>としての要件を満たします。
+          </td>
+        </tr>
+      </table>
+    </section>
+
+    <!-- 3. 写真の管理 -->
+    <section id="photo">
+      <h2>3. 商品の登録・管理</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num"></div>
+          <div class="step-body">
+            <strong>各種商品 → 商品を新規追加</strong><br>
+            タイトル、商品ファイル、サムネイル画像、販売形式と価格を設定します。
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num"></div>
+          <div class="step-body">
+            <strong>在庫管理の設定</strong><br>
+            「在庫管理を行う」にチェックを入れると、在庫数に基づいて販売を制限。0になると自動で「売り切れ」表示になります。
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. 一括登録 -->
+    <section id="bulk">
+      <h2>4. メディアライブラリからの一括登録</h2>
+      <p>数十点、数百点の商品を効率よく登録するための機能です。</p>
+      <div class="card">
+        <h4>📝 手順</h4>
+        <ol style="padding-left:20px;">
+          <li>WordPressメニュー：<strong>各種商品 → 一括登録</strong> を開く</li>
+          <li>「メディアライブラリから選択」をクリックし、画像を選択</li>
+          <li>カテゴリーと各形式の初期価格を設定して「商品を一括生成する」をクリック</li>
+        </ol>
+      </div>
+    </section>
+
+
+    <!-- 6. 注文管理 -->
+    <section id="order">
+      <h2>6. 注文管理（受注一覧）</h2>
+      <p>WordPress管理画面 → <strong>各種商品 → 受注一覧</strong> で全注文を管理します。</p>
+      
+      <div class="card">
+        <h4>📋 注文のフィルタリング</h4>
+        <p>上部のタブで表示する注文を切り替えられます。</p>
+        <ul style="padding-left:20px;">
+          <li><strong>通常注文</strong>: 未決済の電子決済（Abandoned）を除いた、有効な注文のみを表示します。</li>
+          <li><strong>放置注文</strong>: 決済が完了していないStripe/PayPay注文、または7日以上経過した入金待ち注文を抽出します。</li>
+          <li><strong>すべて表示</strong>: システム上のすべての注文を表示します。</li>
+        </ul>
+      </div>
+
+      <div class="card" style="border-left:4px solid var(--primary);">
+        <h4>⚙️ ステータスの一括更新</h4>
+        <p>複数の注文を選択して、一括でステータスを変更できます。</p>
+        <ol style="padding-left:20px; font-size:0.95rem;">
+          <li>受注一覧で対象の注文にチェックを入れる</li>
+          <li>上部または下部の「一括操作」から以下を選択：
+            <ul style="padding-left:20px; margin-top:4px;">
+              <li><strong>ステータス: 準備中に変更</strong></li>
+              <li><strong>ステータス: 完了（発送済み）に変更</strong></li>
+            </ul>
+          </li>
+          <li>「適用」ボタンをクリック</li>
+        </ol>
+        <p class="description" style="margin-top:6px;">※ステータス変更時には、購入者へ自動的に「ステータス更新通知メール」が送信されます。</p>
+      </div>
+
+      <div class="card" style="border-left:4px solid var(--danger);">
+        <h4>🗑️ 選択して一括削除</h4>
+        <p>「一括操作」から「削除」を選んで「適用」をクリックすることで、複数の注文をまとめて削除できます。この操作は元に戻せませんのでご注意ください。</p>
+      </div>
+    </section>
+
+    <!-- 7. ステータス -->
+    <section id="status">
+      <h2>7. 注文ステータスフロー</h2>
+      <table>
+        <tr>
+          <th>ステータス</th>
+          <th>意味</th>
+          <th>次のアクション</th>
+        </tr>
+        <tr>
+          <td><span class="badge badge-pending">入金待ち</span></td>
+          <td>銀行振込の入金確認待ち</td>
+          <td>入金確認後 → 「決済完了」へ変更</td>
+        </tr>
+         <tr>
+          <td><span class="badge badge-processing">決済完了 / 発送待ち</span></td>
+          <td>決済が完了し、配送準備中</td>
+          <td>発送完了後 → 「発送済み」へ変更</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-active" style="background:#f0fdf4; color:#22c55e;">🟣 サービス中 / 継続中</span></td>
+          <td>サブスクリプション（定期購入）が有効な状態</td>
+          <td>次回の自動課金を待ちます。解約されるまでこの状態が続きます。</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-completed">発送済み / 完了</span></td>
+          <td>商品を発送済み、または単発サービスの提供完了</td>
+          <td>—（完了）</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-cancelled">キャンセル</span></td>
+          <td>注文をキャンセルした</td>
+          <td>購入者に自動でキャンセルメールが送られます</td>
+        </tr>
+      </table>
+
+      <div class="alert alert-info">
+        💡 クレジットカードまたはPayPay（Stripe）決済の場合、決済が完了した時点で自動的に「決済完了 / 発送待ち（サービス・デジタルの場合は『サービス中 / 継続中』）」になります。
+      </div>
+    </section>
+
+    <!-- 6. 各種アクション -->
+    <section id="actions">
+      <h2>6. 各種アクション操作</h2>
+
+      <div class="card">
+        <h4><span class="btn-sample" style="color:#444;">編集</span> — 注文を編集</h4>
+        <p>購入者情報・ステータス・送り状番号を変更できます。送り状番号を入力して保存すると、購入者への発送通知メールが自動送信されます。</p>
+      </div>
+
+      <div class="card">
+        <h4><span class="btn-sample" style="color:#005fa3;">📧 再送</span> — 確認メール再送</h4>
+        <p>注文確認メールを購入者に再送します。メールが届いていないと連絡を受けた際に使用します。</p>
+      </div>
+
+      <div class="card">
+        <h4><span class="btn-sample" style="color:#a00; border-color:#a00;">キャンセル</span> — 注文キャンセル</h4>
+        <p>注文をキャンセルします。実行すると：</p>
+        <ul style="padding-left:20px; margin-top:6px;">
+          <li>ステータスが「キャンセル」に更新される</li>
+          <li>購入者にキャンセル通知メールが自動送信される</li>
+          <li><strong>クレジットカード・PayPay（Stripe）決済の場合、自動的に全額返金が実行されます。</strong></li>
+        </ul>
+        <div class="alert alert-info" style="margin-top:10px;">
+          💡 自動返金の結果は画面上のメッセージで確認できます。銀行振込や代金引換の場合は、手動での返金対応が必要です。<br>
+          💡 <strong>在庫とクーポンの復元</strong>：キャンセルを実行すると、その注文に含まれていた商品の在庫および使用されたクーポンの利用回数が自動的に復元（差し戻し）されます。
+        </div>
+        <div class="alert alert-warning" style="margin-top:10px;">
+          ⚠️ キャンセル後に「発送済み」などに戻すには「編集」からステータスを変更してください。
+        </div>
+      </div>
+
+      <div class="card">
+        <h4><span class="btn-sample" style="color:#2271b1;">📄 納品書</span> / <span class="btn-sample"
+            style="color:#2271b1;">🧾 領収書</span> — 各種帳票出力</h4>
+        <p>注文詳細に基づいた納品書や領収書を「印刷用A4レイアウト」で表示します。ブラウザの印刷機能を使用してPDF保存や紙への印刷が可能です。</p>
+        <ul style="padding-left:20px; margin-top:6px;">
+          <li><strong>納品書</strong>：商品明細や配送先を記載します。</li>
+          <li><strong>領収書</strong>：合計金額を強調した領収書形式で出力します。</li>
+        </ul>
+      </div>
+
+
+      <div class="card">
+        <h4><span class="btn-sample" style="color:#a00; border-color:#a00;">削除</span> — 注文削除</h4>
+        <p>注文を完全に削除します。この操作は元に戻せません。通常はキャンセルを使用し、削除は不要な注文のみに限定することを推奨します。</p>
+        <div class="alert alert-info" style="margin-top:10px;">
+          💡 <strong>在庫・クーポンの復元</strong>：未キャンセルの注文を削除した場合、削除前に在庫およびクーポン使用回数が自動的に復元されます。
+        </div>
+      </div>
+    </section>
+
+    <!-- 8. クーポン管理 -->
+    <section id="coupon">
+      <h2>8. クーポン設定・管理</h2>
+      <p>WordPress管理画面 → <strong>各種商品 → クーポン管理</strong> でクーポンを作成・管理できます。</p>
+      
+      <div class="card">
+        <h4>🎫 クーポンの作成</h4>
+        <p>「新規追加」から以下の項目を設定してクーポンを発行します。</p>
+        <table>
+          <tr>
+            <th>項目</th>
+            <th>説明</th>
+          </tr>
+          <tr>
+            <td>クーポンコード</td>
+            <td>お客さまが入力する半角英数字のコード（例: WELCOME2024）</td>
+          </tr>
+          <tr>
+            <td>割引種別</td>
+            <td>百分率(%) または 固定額(円) を選択</td>
+          </tr>
+          <tr>
+            <td>割引額</td>
+            <td>10%なら「10」、500円なら「500」と入力</td>
+          </tr>
+          <tr>
+            <td>有効期限</td>
+            <td>クーポンの利用期限を設定（未設定で無期限）</td>
+          </tr>
+          <tr>
+            <td>利用回数上限</td>
+            <td>そのクーポンが全体で何回使われたら無効にするかを設定（未設定で無制限）</td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="card" style="margin-top:20px; border-left:4px solid var(--primary);">
+        <h4>🛒 お客さま側の利用方法</h4>
+        <p>チェックアウト（お支払い）画面の「クーポンをお持ちですか？」をクリックし、コードを入力して「適用」ボタンを押すと、リアルタイムで合計金額が更新されます。</p>
+      </div>
+      
+      <div class="alert alert-info">
+        💡 <strong>利用回数の自動カウント</strong>：注文が確定するたびに、利用されたクーポンの「現在の利用回数」が自動で加算されます。上限に達したクーポンは自動的に無効となります（※注文キャンセル時には自動的に回数が差し戻されます）。
+      </div>
+    </section>
+
+    <!-- 9. サブスクリプション機能 -->
+    <section id="subscription">
+      <h2>9. サブスクリプション機能 [v3.0.0]</h2>
+      <p>継続的なサービス（月額・年額など）を販売するための機能です。</p>
+
+      <div class="card">
+        <h4>📦 商品をサブスクとして設定する</h4>
+        <p>「商品を新規追加」または「編集」画面で、<strong>「この商品をサブスクリプションとして販売する」</strong>にチェックを入れます。</p>
+        <div class="alert alert-info">
+          💡 サブスクを有効にした商品は、Stripe Checkout で自動的に「継続課金」として処理されます。<br>
+          🚚 <strong>配送が必要な商品 (定期購入)</strong>にチェックを入れると、チェックアウト時に住所入力が必須になります（サービス提供型の場合はチェックを外してください）。<br>
+          ⚠️ サブスクリプション商品が含まれる場合、<strong>クレジットカード決済のみ</strong>となります（PayPay・銀行振込・代金引換はご利用いただけません）。
+        </div>
+      </div>
+
+      <div class="card">
+        <h4>💳 購入者の管理ポータル</h4>
+        <p>購入者は以下の方法で自身のサブスクリプションを管理（解約、カード変更など）できます。</p>
+        <ul style="padding-left:20px;">
+          <li><strong>注文照会ページ</strong>: 照会結果の画面に表示される「サブスクリプション管理」ボタンから移動。</li>
+          <li><strong>専用ショートコード</strong>: <code>[ec_customer_portal]</code> を設置したページから（登録メールアドレスへの認証コード送信による安全なログインが可能です）。</li>
+        </ul>
+      </div>
+
+      <div class="alert alert-warning">
+        ⚠️ <strong>Webhookの設定</strong>：サブスクの「解約」をシステムに反映させるには、Stripe管理画面でWebhookの設定（<code>customer.subscription.deleted</code> を「送る」設定）が必要です。
+      </div>
+    </section>
+
+    <!-- 10. 注文照会ページ -->
+    <section id="inquiry">
+      <h2>10. 購入者向け注文照会ページ</h2>
+      <p>購入者が自分で注文状況を確認できるページです。ショートコードを固定ページに設置するだけで動作します。</p>
+
+      <h3>設置方法</h3>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num"></div>
+          <div class="step-body">
+            <strong>固定ページを新規作成</strong>
+            例：「注文照会」というタイトルで固定ページを作成
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num"></div>
+          <div class="step-body">
+            <strong>ショートコードを貼り付け</strong>
+            <div class="shortcode">[ec_order_inquiry]</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num"></div>
+          <div class="step-body">
+            <strong>確認メールにURLを追記</strong>
+            設定の確認メール文面に「注文照会はこちら：（ページURL）」を追加
+          </div>
+        </div>
+      </div>
+
+      <h3>照会ページでできること</h3>
+      <ul style="padding-left:20px;">
+        <li>注文番号 ＋ メールアドレスで注文詳細を確認</li>
+        <li>注文ステータス（入金待ち / 発送準備中 / 発送済み / キャンセル）の確認</li>
+        <li>送り状番号の確認（発送後に表示）</li>
+        <li>デジタル商品のダウンロードリンク再取得</li>
+        <li><strong>インボイス対応の税額内訳表示</strong>（消費税 10% / 8% の対象額と税額を表示）</li>
+      </ul>
+
+      <div class="alert alert-info">
+        💡 注文番号は確認メールに記載されています。購入者に案内してください。
+      </div>
+
+      <div class="card" style="margin-top:20px;">
+        <h4>💬 注文備考（メッセージ機能）</h4>
+        <p>購入者がチェックアウト時に管理者へメッセージを残すことができます。</p>
+        <ul style="padding-left:20px; font-size:0.95rem;">
+          <li><strong>購入者側</strong>: 支払い画面の「備考」欄に自由に入力できます。</li>
+          <li><strong>管理者側</strong>: 各通知メールおよび「受注編集」画面で内容を確認できます。</li>
+          <li><strong>追記・修正</strong>: 管理者は「受注編集」画面から備考内容を更新することも可能です。</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 8. ダウンロード管理 -->
+    <section id="download">
+      <h2>8. ダウンロード管理</h2>
+      <p>ダウンロード版の購入の場合、リンクに有効期限と回数制限を設定できます。</p>
+
+      <table>
+        <tr>
+          <th>設定項目</th>
+          <th>デフォルト</th>
+          <th>説明</th>
+        </tr>
+        <tr>
+          <td>ダウンロード有効期限</td>
+          <td>7日間</td>
+          <td>注文日から何日間ダウンロード可能か</td>
+        </tr>
+        <tr>
+          <td>ダウンロード上限回数</td>
+          <td>5回</td>
+          <td>一つの注文で何回ダウンロードできるか</td>
+        </tr>
+      </table>
+
+      <div class="alert alert-warning">
+        ⚠️ 有効期限・上限回数を超えた場合、購入者が注文照会ページから確認すると「期限切れ」または「上限に達しました」と表示されます。延長が必要な場合は管理画面から注文を編集してください。
+      </div>
+    </section>
+
+    <!-- 9. CSVエクスポート -->
+    <section id="csv">
+      <h2>9. 受注データのCSVエクスポート</h2>
+      <p>受注一覧の右上にある「💾 CSVエクスポート」ボタンをクリックすると、全注文データをCSVファイルでダウンロードできます。</p>
+
+      <h3>CSVの項目</h3>
+      <p>注文ID / 注文番号 / 購入者名 / メールアドレス / 購入商品 / 商品小計 / 送料 / 代引き手数料 / クーポンコード / クーポン割引額 / <strong>10%対象額 / 10%消費税 / 8%対象額 / 8%消費税</strong> / 合計金額 / 支払い方法 / ステータス / 送り状番号 / 注文日時 / 郵便番号 / 都道府県 / 住所 / Stripe 顧客ID / Stripe サブスクID</p>
+
+      <h3>使用シーン</h3>
+      <ul style="padding-left:20px;">
+        <li>確定申告時の売上集計</li>
+        <li>Excelでの売上分析</li>
+        <li>バックグラウンドでの顧客管理</li>
+      </ul>
+
+      <div class="alert alert-success">
+        ✅ ファイルはUTF-8 BOM付きで出力されるため、Excelで開いても文字化けしません。
+      </div>
+    </section>
+
+    <!-- 10. 商品CSV一括編集 -->
+    <section id="csv-bulk">
+      <h2>10. 商品CSV一括編集 [v3.7.0]</h2>
+      <p>多数の商品の価格や在庫状況、サブスクリプション設定をCSVファイルを使って一括で更新できる機能です。</p>
+      
+      <div class="card">
+        <h4>📝 操作手順</h4>
+        <ol style="padding-left:20px;">
+          <li><strong>各種商品 → 商品CSV一括編集</strong> に移動します。</li>
+          <li>「現在のデータをダウンロード」ボタンを押し、CSVファイルを保存します。</li>
+          <li>Excel等でCSVを開き、価格や在庫数を編集して保存します。</li>
+          <li>「CSVファイルを選択」から編集したファイルをアップロードし、「インポートを実行」をクリックします。</li>
+        </ol>
+      </div>
+
+      <div class="card">
+        <h4>📁 カラム（列）の設定ルール</h4>
+        <table>
+          <tr><th>項目</th><th>ルール・説明</th></tr>
+          <tr><td>ID</td><td>システム識別用（変更不可）</td></tr>
+          <tr><td>商品名</td><td>タイトルの変更が可能です。</td></tr>
+          <tr><td>各種価格</td><td>半角数値で入力してください。</td></tr>
+          <tr><td>税率区分</td><td>standard(10%) / reduced(8%)</td></tr>
+          <tr><td>各種フラグ</td><td>1で有効、0で無効（売り切れ、在庫管理、サブスク等）</td></tr>
+          <tr><td>サブスク、サイクル</td><td>day(日) / week(週) / month(月) / year(年)</td></tr>
+        </table>
+      </div>
+
+      <div class="alert alert-info">
+        💡 <strong>Excel対応</strong>：Shift-JISおよびUTF-8の両方のエンコーディングに対応しているため、日本のExcelでそのまま編集して保存しても正しくインポートされます。
+      </div>
+      <div class="alert alert-warning">
+        ⚠️ <strong>画像について</strong>：現在のバージョンでは画像の追加・変更には対応しておりません。画像はWordPressの管理画面から個別に設定してください。
+      </div>
+    </section>
+
+    <!-- 11. 在庫アラート機能 -->
+    <section id="stock-alert">
+      <h2>11. 在庫アラート機能 [v3.7.1]</h2>
+      <p>在庫切れによる販売機会の損失を防ぐため、在庫が少なくなった際に自動で管理者に通知する機能です。</p>
+      
+      <div class="card">
+        <h4>🚨 通知の仕組み</h4>
+        <ul>
+            <li><strong>しきい値の設定</strong>: 「設定 &gt; 一般」タブの「在庫アラートのしきい値」で、何個以下になったら通知するかを設定できます（デフォルト: 5）。</li>
+            <li><strong>リアルタイム判定</strong>: 購入によって在庫が減った際や、CSV・手動で在庫を書き換えた際に自動チェックが行われます。</li>
+            <li><strong>メール通知</strong>: 在庫がしきい値以下になると、管理者の受信メールアドレスに「【在庫不足アラート】商品名」という件名のメールが届きます。</li>
+            <li><strong>重複防止</strong>: 一度数値が下がって通知された後は、在庫が補充（しきい値より大きく設定）されるまで、同じ商品のアラートは二重送信されません。</li>
+        </ul>
+      </div>
+      
+      <div class="note">
+        <strong>💡 運用のコツ</strong><br>
+        人気商品はしきい値を多め（例: 20個）に設定し、一点ものや入荷が早いものは少なめ（例: 2個）に設定したしきい値を「一般設定」で調整してください。
+      </div>
+    </section>
+
+    <!-- 12. ショートコード一覧 -->
+    <section id="shortcodes">
+      <h2>12. 利用可能なショートコード一覧</h2>
+      <p>固定ページや投稿の本文に貼り付けて使用します。</p>
+      <table>
+        <tr>
+          <th>ショートコード</th>
+          <th>機能</th>
+        </tr>
+        <tr>
+          <td><code>[ec_gallery]</code></td>
+          <td>商品一覧（ギャラリー）を表示します。検索バー、カテゴリー切替、価格順ソート機能を内蔵しています。</td>
+        </tr>
+        <tr>
+          <td><code>[ec_checkout]</code></td>
+          <td>ショッピングカート・決済画面を表示します</td>
+        </tr>
+        <tr>
+          <td><code>[ec_cart_indicator]</code></td>
+          <td>現在のカート内の点数を表示する浮遊アイコン</td>
+        </tr>
+        <tr>
+          <td><code>[ec_order_inquiry]</code></td>
+          <td>非ログインユーザー向けの注文状況確認ページを表示します。注文番号とメールアドレスで照会可能です。</td>
+        </tr>
+        <tr>
+          <td><code>[ec_tokushoho]</code></td>
+          <td>特定商取引法に基づく表記を自動生成して表示します</td>
+        </tr>
+        <tr>
+          <td><code>[ec_shipping_payment]</code></td>
+          <td>送料規定や支払い方法、銀行口座情報を一覧表示します</td>
+        </tr>
+        <tr>
+          <td><code>[ec_customer_portal]</code></td>
+          <td>購入者がサブスクリプションを管理（支払い方法変更、解約等）できるポータルを表示します [v3.0.0]</td>
+        </tr>
+      </table>
+    </section>
+
+    <!-- 13. クーポン管理 -->
+    <section id="coupons">
+      <h2>13. クーポン管理</h2>
+      <p>割引クーポンを作成・管理できます。<strong>各種商品 → クーポン管理</strong> で操作します。</p>
+      
+      <div class="card">
+        <h4>🎫 クーポンの作成</h4>
+        <p>新規追加または編集画面で以下の項目を設定できます。</p>
+        <ul style="padding-left:20px;">
+          <li><strong>クーポンコード</strong>: お客様がカート画面で入力するコードです。</li>
+          <li><strong>割引額/率</strong>: 定額（円）またはパーセント（%）を設定します。</li>
+          <li><strong>最低購入金額</strong>: この金額以上の注文にのみクーポンが適用されます。</li>
+          <li><strong>利用期限 / 回数制限</strong>: クーポンの有効期限や、全体での使用回数上限を設定できます。</li>
+        </ul>
+      </div>
+
+      <div class="card" style="background:#f0f7ff;">
+        <h4>🔄 サブスクリプションと割引期間</h4>
+        <p>サブスクリプション商品（定期購入）に対してクーポンがどのように適用されるかを設定できます。これはStripe決済時に自動的に反映されます。</p>
+        <ul style="padding-left:20px; margin-top:10px;">
+          <li><strong>初回のみ (1回限り)</strong>: 初回の支払いのみ割引が適用され、2回目以降は通常価格になります。</li>
+          <li><strong>永続</strong>: 解約されるまで、毎回の支払いにずっと割引が適用されます。</li>
+          <li><strong>指定した期間</strong>: 「3ヶ月間のみ割引」のように、指定した回数分だけ割引を継続させることができます。</li>
+        </ul>
+        <p class="description">※ カート画面では、サブスクリプション商品にクーポンが適用された際、その期間（初回のみ、等）が明示されます。</p>
+      </div>
+    </section>
+
+    <!-- 14. FAQ -->
+    <section id="faq">
+      <h2>14. よくある質問</h2>
+
+      <div class="card">
+        <h4>Q. 購入者からメールが届いていないと言われた</h4>
+        <p>管理画面の受注一覧から該当注文の「📧 再送」ボタンをクリックしてください。また、購入者にスパムフォルダの確認もお願いしてください。</p>
+      </div>
+
+      <div class="card">
+        <h4>Q. ダウンロードリンクが切れていると言われた</h4>
+        <p>購入者を注文照会ページ（<code>/order-inquiry/</code>）に案内してください。注文番号 ＋
+          メールアドレスでダウンロードリンクを再取得できます。有効期限内であれば正常にダウンロードできます。</p>
+      </div>
+
+      <div class="card">
+        <h4>Q. Stripe決済でエラーが出た</h4>
+        <p>設定画面でStripeシークレットキーが正しく入力されているか確認してください。テストモードのキーと本番キーを間違えないよう注意してください。</p>
+      </div>
+
+      <div class="card">
+        <h4>Q. 送料が「住所入力後に表示」となっている</h4>
+        <p>配送が必要な商品がカートにある場合、配送先住所を入力することで送料が自動計算されます。サブスクリプション商品で配送不要（サービス提供のみ）の設定にしている場合、送料は発生しません。</p>
+      </div>
+
+      <div class="card">
+        <h4>Q. CSVをExcelで開いたら文字化けした</h4>
+        <p>ファイルはUTF-8 BOM付きで出力されています。Excelで「データ → テキストファイル」から読み込む場合はエンコード「UTF-8」を選択してください。</p>
+      </div>
+
+      <div class="card">
+        <h4>Q. 代金引換が選択できない</h4>
+        <p>ダウンロード版商品（デジタル販売）がカートに含まれている場合、またはお届けエリア（離島など）によっては代金引換をご利用いただけません。その場合はクレジットカード、PayPay、または銀行振込をご利用ください。
+        </p>
+      </div>
+    <!-- 9. セキュリティと信頼性 -->
+    <section id="security">
+      <h2>9. セキュリティと信頼性</h2>
+      <div class="card">
+        <p>本プラグインは商用利用を前提として、以下のセキュリティ対策を講じています。</p>
+        <ul style="padding-left:20px;">
+          <li><strong>価格操作の防止</strong>: チェックアウト時にブラウザ側で商品価格やオプション価格が書き換えられた場合でも、サーバー側でデータベースの値を再照合し、正しい金額で決済が行われるよう保護されています。</li>
+          <li><strong>SQLインジェクション対策</strong>: データベースへのすべての操作は、WordPressの安全なクエリ発行手順（プリペアドステートメント）に従って行われています。</li>
+          <li><strong>不正操作の防止</strong>: 非ログインユーザーや権限のないユーザーが、受注データの編集や設定変更を行うことはできません。</li>
+        </ul>
+      </div>
+    </section>
+
+  </div>
+
+  <footer>
+    <p>シンプルECプラグイン v3.8.0 &nbsp;|&nbsp; 管理マニュアル</p>
+  </footer>
+
+</body>
+
+</html>
