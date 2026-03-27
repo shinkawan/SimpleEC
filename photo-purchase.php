@@ -1289,3 +1289,49 @@ function photo_purchase_get_active_payment_methods_text($type = 'label')
 	}
 	return implode('、', $methods);
 }
+
+/**
+ * Add Simple EC Dashboard Widget
+ */
+function photo_purchase_register_dashboard_widget() {
+    wp_add_dashboard_widget(
+        'photo_purchase_dashboard_status',
+        'Simple EC ステータス',
+        'photo_purchase_dashboard_widget_content'
+    );
+}
+add_action('wp_dashboard_setup', 'photo_purchase_register_dashboard_widget');
+
+/**
+ * Dashboard Widget Content
+ */
+function photo_purchase_dashboard_widget_content() {
+    global $wpdb;
+    $orders_table = $wpdb->prefix . 'photo_orders';
+    $logs_table = $wpdb->prefix . 'photo_system_logs';
+
+    // Get order counts
+    $pending = $wpdb->get_var("SELECT COUNT(*) FROM $orders_table WHERE status = 'pending_payment'");
+    $processing = $wpdb->get_var("SELECT COUNT(*) FROM $orders_table WHERE status = 'processing'");
+    
+    // Get recent error count (last 24h)
+    $error_count = $wpdb->get_var("SELECT COUNT(*) FROM $logs_table WHERE level = 'error' AND log_date > DATE_SUB(NOW(), INTERVAL 1 DAY)");
+
+    echo '<div class="photo-dashboard-stats">';
+    echo '<p><span class="dashicons dashicons-cart"></span> <strong>受信した注文:</strong></p>';
+    echo '<ul>';
+    echo '<li>入金待ち: <a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-orders') . '">' . intval($pending) . ' 件</a></li>';
+    echo '<li>準備中（決済済）: <a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-orders') . '">' . intval($processing) . ' 件</a></li>';
+    echo '</ul>';
+    
+    if ($error_count > 0) {
+        echo '<p style="color:#d63638;"><span class="dashicons dashicons-warning"></span> <strong>直近24時間のシステムエラー:</strong> <a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-logs') . '" style="color:#d63638;">' . intval($error_count) . ' 件</a></p>';
+    } else {
+        echo '<p style="color:#22c55e;"><span class="dashicons dashicons-yes-alt"></span> システムは正常に稼働しています。</p>';
+    }
+    
+    echo '<hr style="margin:15px 0 10px;">';
+    echo '<p><a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-settings') . '" class="button">各種設定</a> ';
+    echo '<a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-orders') . '" class="button button-primary">注文管理</a></p>';
+    echo '</div>';
+}

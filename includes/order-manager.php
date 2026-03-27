@@ -1977,6 +1977,7 @@ function photo_purchase_export_orders_csv()
     fputcsv($output, array(
         '注文ID',
         '注文番号',
+        '登録番号',
         '購入者名',
         'メールアドレス',
         '購入商品',
@@ -2109,6 +2110,7 @@ function photo_purchase_export_orders_csv()
         fputcsv($output, array(
             $order->id,
             $order->order_token,
+            get_option('photo_pp_invoice_number', ''),
             $order->buyer_name,
             $order->buyer_email,
             implode(' / ', $item_details),
