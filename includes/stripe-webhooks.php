@@ -29,14 +29,14 @@ function photo_purchase_handle_stripe_webhook() {
             }
 
             if (!$timestamp || !$signature_v1) {
-                error_log('Stripe Webhook Error: Missing timestamp or signature v1');
+                photo_purchase_log('error', 'Stripe Webhook: タイムスタンプまたは署名(v1)が不足しています。', array('sig' => $sig_header));
                 http_response_code(400);
                 exit;
             }
 
             // Verify timestamp age (allow 5 minutes drift)
             if (abs(time() - intval($timestamp)) > 300) {
-                error_log('Stripe Webhook Error: Timestamp too old');
+                photo_purchase_log('error', 'Stripe Webhook: タイムスタンプの期限切れです。', array('t' => $timestamp, 'now' => time()));
                 http_response_code(400);
                 exit;
             }
@@ -45,19 +45,19 @@ function photo_purchase_handle_stripe_webhook() {
             $expected_sig = hash_hmac('sha256', $signed_payload, $webhook_secret);
 
             if (!hash_equals($expected_sig, $signature_v1)) {
-                error_log('Stripe Webhook Error: Invalid signature match');
+                photo_purchase_log('error', 'Stripe Webhook: 署名検証に失敗しました。', array('expected' => $expected_sig, 'v1' => $signature_v1));
                 http_response_code(401);
                 exit;
             }
         } elseif ($webhook_secret) {
-            // Secret configured but no signature header found
-            error_log('Stripe Webhook Error: Missing signature header');
+            photo_purchase_log('error', 'Stripe Webhook: 署名ヘッダーが見つかりません。');
             http_response_code(400);
             exit;
         }
 
         $event = json_decode($payload, true);
         if (!$event || !isset($event['type'])) {
+            photo_purchase_log('error', 'Stripe Webhook: ペイロードの解析に失敗しました。');
             http_response_code(400);
             exit;
         }

@@ -91,11 +91,17 @@ function photo_purchase_create_db_table()
 		$wpdb->query("ALTER TABLE `$coupon_table` ADD `stripe_months` int(11) DEFAULT 0 NOT NULL AFTER `stripe_duration` ");
 	}
 
-	// Order notes support
-	$notes_exists = $wpdb->get_results("SHOW COLUMNS FROM `$table_name` LIKE 'order_notes'");
-	if (empty($notes_exists)) {
-		$wpdb->query("ALTER TABLE `$table_name` ADD `order_notes` text NOT NULL AFTER `coupon_info` ");
-	}
+	// Log table support
+	$log_table = $wpdb->prefix . 'photo_system_logs';
+	$sql_log = "CREATE TABLE $log_table (
+		id bigint(20) NOT NULL AUTO_INCREMENT,
+		log_date datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
+		level varchar(20) NOT NULL,
+		message text NOT NULL,
+		context text,
+		PRIMARY KEY  (id)
+	) $charset_collate;";
+	dbDelta($sql_log);
 }
 
 /**
@@ -191,6 +197,16 @@ function photo_purchase_admin_menus()
 		'manage_options',
 		'photo-purchase-bulk-edit',
 		'photo_purchase_bulk_edit_page'
+	);
+
+	// システムログ
+	add_submenu_page(
+		'edit.php?post_type=photo_product',
+		__('システムログ', 'photo-purchase'),
+		__('システムログ', 'photo-purchase'),
+		'manage_options',
+		'photo-purchase-logs',
+		'photo_purchase_log_page'
 	);
 }
 add_action('admin_menu', 'photo_purchase_admin_menus');
@@ -1202,6 +1218,8 @@ require_once PHOTO_PURCHASE_PATH . 'includes/frontend-display.php';
 require_once PHOTO_PURCHASE_PATH . 'includes/payment-handler.php';
 require_once PHOTO_PURCHASE_PATH . 'includes/cart-system.php';
 require_once PHOTO_PURCHASE_PATH . 'includes/order-manager.php';
+require_once PHOTO_PURCHASE_PATH . 'includes/admin-log.php';
+require_once PHOTO_PURCHASE_PATH . 'includes/stripe-webhooks.php';
 
 /**
  * Enqueue Frontend Assets
@@ -1214,6 +1232,17 @@ function photo_purchase_enqueue_assets()
 	wp_enqueue_style('photo-purchase-style', PHOTO_PURCHASE_URL . 'assets/css/style.css', array(), PHOTO_PURCHASE_VERSION);
 }
 add_action('wp_enqueue_scripts', 'photo_purchase_enqueue_assets');
+
+/**
+ * Enqueue Admin Assets
+ */
+function photo_purchase_enqueue_admin_assets($hook)
+{
+	if (strpos($hook, 'photo_product') !== false || strpos($hook, 'photo-purchase') !== false) {
+		wp_enqueue_style('photo-purchase-admin', PHOTO_PURCHASE_URL . 'assets/css/admin.css', array(), PHOTO_PURCHASE_VERSION);
+	}
+}
+add_action('admin_enqueue_scripts', 'photo_purchase_enqueue_admin_assets');
 
 /**
  * Get Regions and Prefectures

@@ -381,7 +381,13 @@ function photo_purchase_send_admin_notification($token, $data, $total)
     } elseif ($data['method'] === 'paypay') {
         $method_label = 'PayPay';
     }
-    $message .= "支払い方法: " . $method_label . "\n\n";
+    $message .= "支払い方法: " . $method_label . "\n";
+    
+    $reg_num = get_option('photo_pp_tokusho_registration_number');
+    if ($reg_num) {
+        $message .= "適格請求書発行事業者登録番号: " . $reg_num . "\n";
+    }
+    $message .= "\n";
 
     if ($data['method'] === 'bank_transfer') {
         $message .= "※銀行振込のため、入金確認後にステータスを更新してください。\n";
@@ -1046,8 +1052,7 @@ function photo_purchase_orders_page()
                             </td>
                             <td>
                                 <?php if ($order->status === 'pending_payment'): ?>
-                                    <span
-                                        style="color:#d98c00; background:#fff9e6; padding:2px 8px; border-radius:4px; font-weight:bold;">入金待ち</span>
+                                    <span class="photo-status photo-status-pending">入金待ち</span>
                                 <?php elseif ($order->status === 'processing'): ?>
                                     <?php
                                         $is_sub_proc = false;
@@ -1066,13 +1071,13 @@ function photo_purchase_orders_page()
                                             }
                                         }
                                         if ($is_sub_proc && !$has_shipping_proc) {
-                                            echo '<span style="color:#7c3aed; background:#f5f3ff; padding:2px 8px; border-radius:4px; font-weight:bold;">サービス中 / 継続中</span>';
+                                            echo '<span class="photo-status photo-status-processing" style="background:#f5f3ff; color:#7c3aed; border-color:#ddd6fe;">有効 / 継続中</span>';
                                         } else {
-                                            echo '<span style="color:#28a745; background:#eaffea; padding:2px 8px; border-radius:4px; font-weight:bold;">決済完了 / 発送待ち</span>';
+                                            echo '<span class="photo-status photo-status-processing">決済完 / 準備中</span>';
                                         }
                                     ?>
                                 <?php elseif ($order->status === 'active'): ?>
-                                    <span style="color:#22c55e; background:#f0fdf4; padding:2px 8px; border-radius:4px; font-weight:bold;">✅ サブスク有効</span>
+                                    <span class="photo-status photo-status-active">サブスク有効</span>
                                 <?php elseif ($order->status === 'completed'): ?>
                                     <?php 
                                         $has_shipping = false;
@@ -1098,15 +1103,14 @@ function photo_purchase_orders_page()
                                         }
                                         $lbl = ($is_sub_item && $has_shipping) ? '配送開始 / 継続中' : '発送済み / 完了';
                                     ?>
-                                    <span style="color:#666; background:#eee; padding:2px 8px; border-radius:4px;"><?php echo $lbl; ?></span>
+                                    <span class="photo-status photo-status-completed"><?php echo $lbl; ?></span>
                                     <?php if ($is_sub_item && $has_shipping && $cycle_label): ?>
                                         <br><small style="color:#4f46e5; font-size:11px;">🔄 <?php echo esc_html($cycle_label); ?></small>
                                     <?php endif; ?>
                                 <?php elseif ($order->status === 'cancelled'): ?>
-                                    <span
-                                        style="color:#a00; background:#fde; padding:2px 8px; border-radius:4px; font-weight:bold;">キャンセル</span>
+                                    <span class="photo-status photo-status-cancelled">キャンセル</span>
                                 <?php elseif ($order->status === 'service_active'): ?>
-                                    <span style="color:#7c3aed; background:#f5f3ff; padding:2px 8px; border-radius:4px; font-weight:bold;">🟣 サブスク有効 / サービス中</span>
+                                    <span class="photo-status photo-status-service-active">🟣 サブスク有効 / サービス中</span>
                                 <?php elseif ($order->status === 'sub_shipping'): ?>
                                     <?php
                                         $cycle_sub = '';
@@ -1121,7 +1125,7 @@ function photo_purchase_orders_page()
                                             }
                                         }
                                     ?>
-                                    <span style="color:#4f46e5; background:#eef2ff; padding:2px 8px; border-radius:4px; font-weight:bold;">🔄 サブスク有効 / 配送中</span>
+                                    <span class="photo-status photo-status-sub-shipping">🔄 サブスク有効 / 配送中</span>
                                     <?php if ($cycle_sub): ?><br><small style="color:#4f46e5; font-size:11px;">🔄 <?php echo esc_html($cycle_sub); ?></small><?php endif; ?>
                                 <?php endif; ?>
                             </td>
@@ -1191,6 +1195,85 @@ function photo_purchase_orders_page()
                                 <?php if (!empty($order->stripe_subscription_id) || $is_sub_item): ?>
                                     <a href="https://dashboard.stripe.com/subscriptions/<?php echo esc_attr($order->stripe_subscription_id ?: 'customers'); ?>" target="_blank" class="button button-small" style="margin-top:5px;">サブスク管理</a>
                                 <?php endif; ?>
+                            </td>
+                        </tr>
+                        <tr id="order-detail-<?php echo $order->id; ?>" class="photo-detail-row" style="display: none;">
+                            <td colspan="11" class="photo-detail-content">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                                    <div>
+                                        <h4 style="margin: 0 0 10px 0;">📦 注文商品詳細</h4>
+                                        <table class="photo-detail-table">
+                                            <thead>
+                                                <tr><th>商品名</th><th>形式</th><th>単価</th><th>数量</th><th>小計</th></tr>
+                                            </thead>
+                                            <tbody>
+                                                <?php 
+                                                $subtotal_items = 0;
+                                                foreach ($items as $it): 
+                                                    $p = intval($it['price'] ?? 0);
+                                                    $q = intval($it['qty'] ?? 1);
+                                                    
+                                                    // Add option prices
+                                                    $opt_total = 0;
+                                                    if (!empty($it['options'])) {
+                                                        foreach ($it['options'] as $opt) { $opt_total += intval($opt['price'] ?? 0); }
+                                                    }
+                                                    $line_sub = ($p + $opt_total) * $q;
+                                                    $subtotal_items += $line_sub;
+                                                ?>
+                                                    <tr>
+                                                        <td>
+                                                            <?php echo esc_html(get_the_title($it['id'])); ?>
+                                                            <?php if (!empty($it['options'])): ?>
+                                                                <div style="font-size:0.85em; color:#666; margin-top:2px;">
+                                                                    <?php foreach ($it['options'] as $opt): ?>
+                                                                        ・<?php echo esc_html($opt['name']); ?> (+<?php echo number_format($opt['price']); ?>円)<br>
+                                                                    <?php endforeach; ?>
+                                                                </div>
+                                                            <?php endif; ?>
+                                                        </td>
+                                                        <td><?php echo photo_purchase_get_format_label($it['format']); ?></td>
+                                                        <td>¥<?php echo number_format($p + $opt_total); ?></td>
+                                                        <td><?php echo $q; ?></td>
+                                                        <td>¥<?php echo number_format($line_sub); ?></td>
+                                                    </tr>
+                                                <?php endforeach; ?>
+                                            </tbody>
+                                            <tfoot>
+                                                <tr><th colspan="4" style="text-align: right;">商品小計</th><td>¥<?php echo number_format($subtotal_items); ?></td></tr>
+                                                <?php if ($f = ($shipping['fee'] ?? 0)): ?>
+                                                    <tr><th colspan="4" style="text-align: right;">送料</th><td>¥<?php echo number_format($f); ?></td></tr>
+                                                <?php endif; ?>
+                                                <?php if ($c = ($shipping['cod_fee'] ?? 0)): ?>
+                                                    <tr><th colspan="4" style="text-align: right;">代引き手数料</th><td>¥<?php echo number_format($c); ?></td></tr>
+                                                <?php endif; ?>
+                                                <?php if (!empty($order->coupon_info)): 
+                                                    $c_data = json_decode($order->coupon_info, true);
+                                                    if ($c_data && !empty($c_data['code'])): ?>
+                                                    <tr><th colspan="4" style="text-align: right;">割引 (<?php echo esc_html($c_data['code']); ?>)</th><td style="color:#c00;">-¥<?php echo number_format($c_data['applied_discount']); ?></td></tr>
+                                                <?php endif; endif; ?>
+                                                <tr style="font-size: 1.1em;"><th colspan="4" style="text-align: right;">合計</th><td><strong>¥<?php echo number_format($order->total_amount); ?></strong></td></tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                    <div>
+                                        <h4 style="margin: 0 0 10px 0;">👤 購入者・お届け先情報</h4>
+                                        <p><strong>名前:</strong> <?php echo esc_html($order->buyer_name); ?> 様</p>
+                                        <p><strong>メール:</strong> <?php echo esc_html($order->buyer_email); ?></p>
+                                        <?php if (!empty($shipping['address'])): ?>
+                                            <p><strong>お届け先:</strong><br>
+                                            〒<?php echo esc_html($shipping['zip']); ?><br>
+                                            <?php echo nl2br(esc_html($shipping['address'])); ?></p>
+                                        <?php endif; ?>
+                                        <?php if (!empty($order->order_notes)): ?>
+                                            <p><strong>備考:</strong><br><?php echo nl2br(esc_html($order->order_notes)); ?></p>
+                                        <?php endif; ?>
+                                        <div style="margin-top: 20px;">
+                                            <a href="<?php echo wp_nonce_url(add_query_arg(array('photo_purchase_action' => 'print_doc', 'order_id' => $order->id, 'type' => 'print_invoice')), 'photo_print_doc'); ?>" class="button" target="_blank">📄 請求書印刷</a>
+                                            <a href="<?php echo wp_nonce_url(add_query_arg(array('photo_purchase_action' => 'print_doc', 'order_id' => $order->id, 'type' => 'print_delivery')), 'photo_print_doc'); ?>" class="button" target="_blank">🚚 納品書印刷</a>
+                                        </div>
+                                    </div>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>
@@ -1444,6 +1527,15 @@ function photo_purchase_order_edit_view($order_id)
             </p>
         </form>
     </div>
+    <script>
+    jQuery(document).ready(function($) {
+        $('.photo-quickview-toggle').on('click', function() {
+            var id = $(this).data('id');
+            $('#order-detail-' + id).toggle();
+            $(this).text($('#order-detail-' + id).is(':visible') ? '詳細を閉じる' : 'クイックビュー');
+        });
+    });
+    </script>
     <?php
 }
 
