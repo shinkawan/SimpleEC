@@ -9,6 +9,9 @@ if (!defined('ABSPATH')) {
  */
 function photo_purchase_coupons_page()
 {
+	if (!current_user_can('manage_options')) {
+		wp_die(__('このページにアクセスする権限がありません。', 'photo-purchase'));
+	}
 	global $wpdb;
 	$table_name = $wpdb->prefix . 'photo_coupons';
 

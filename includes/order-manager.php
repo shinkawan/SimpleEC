@@ -703,7 +703,10 @@ function photo_purchase_send_cancel_notification($order_id)
  */
 function photo_purchase_orders_page()
 {
-    global $wpdb;
+	if (!current_user_can('manage_options')) {
+		wp_die(__('このページにアクセスする権限がありません。', 'photo-purchase'));
+	}
+	global $wpdb;
     $table_name = $wpdb->prefix . 'photo_orders';
 
     // Ensure database table is up to date (adds missing columns like tracking_number)
@@ -1959,7 +1962,10 @@ function photo_purchase_handle_print_actions()
  */
 function photo_purchase_export_orders_csv()
 {
-    global $wpdb;
+	if (!current_user_can('manage_options')) {
+		wp_die(__('この処理を実行する権限がありません。', 'photo-purchase'));
+	}
+	global $wpdb;
     $table_name = $wpdb->prefix . 'photo_orders';
     $orders = $wpdb->get_results("SELECT * FROM $table_name ORDER BY created_at DESC");
 
@@ -1988,10 +1994,10 @@ function photo_purchase_export_orders_csv()
         'クーポン割引額',
         '合計金額',
         '合計消費税',
-        '10%対象額(税込)',
-        '10%消費税',
-        '8%対象額(税込)',
-        '8%消費税',
+        '10%対象額（税込）',
+        '10%消費税額',
+        '8%対象額（税込）',
+        '8%消費税額',
         '支払い方法',
         'ステータス',
         '送り状番号',
