@@ -237,47 +237,45 @@ add_action('init', function() {
 });
 
 /**
- * Add Dashboard Widget for Manual
+ * Add Dashboard Widget for Simple EC Status
  */
 function photo_purchase_add_dashboard_widgets() {
 	wp_add_dashboard_widget(
 		'photo_purchase_stats_widget',
-		'Simple EC 運用状況',
+		'Simple EC ステータス',
 		'photo_purchase_dashboard_widget_content'
 	);
 }
 add_action('wp_dashboard_setup', 'photo_purchase_add_dashboard_widgets');
 
 function photo_purchase_dashboard_widget_content() {
-	global $wpdb;
-    $table_name = $wpdb->prefix . 'photo_orders';
-    
-    // Stats calculation
-    $today_sales = $wpdb->get_var("SELECT SUM(total_amount) FROM $table_name WHERE DATE(created_at) = CURDATE() AND status NOT IN ('cancelled', 'abandoned')");
-    $month_sales = $wpdb->get_var("SELECT SUM(total_amount) FROM $table_name WHERE YEAR(created_at) = YEAR(CURDATE()) AND MONTH(created_at) = MONTH(CURDATE()) AND status NOT IN ('cancelled', 'abandoned')");
-    $pending_count = $wpdb->get_var("SELECT COUNT(*) FROM $table_name WHERE status IN ('pending', 'processing')");
+    global $wpdb;
+    $orders_table = $wpdb->prefix . 'photo_orders';
+    $logs_table = $wpdb->prefix . 'photo_system_logs';
 
-	$manual_url = PHOTO_PURCHASE_URL . 'manual.html';
-    $orders_url = admin_url('edit.php?post_type=photo_product&page=photo-purchase-orders');
-
-	echo '<div class="photo-dashboard-stats" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; text-align:center; padding:10px 0;">';
-    echo '  <div style="background:#f9f9f9; padding:15px 5px; border-radius:8px;">';
-    echo '    <span class="dashicons dashicons-chart-line" style="color:#e8a0bf; font-size:24px; width:auto; height:auto;"></span><br>';
-    echo '    <small>本日売上</small><br><strong style="font-size:1.2em;">￥' . number_format(intval($today_sales)) . '</strong>';
-    echo '  </div>';
-    echo '  <div style="background:#f9f9f9; padding:15px 5px; border-radius:8px;">';
-    echo '    <span class="dashicons dashicons-chart-area" style="color:#c47a9a; font-size:24px; width:auto; height:auto;"></span><br>';
-    echo '    <small>今月売上</small><br><strong style="font-size:1.2em;">￥' . number_format(intval($month_sales)) . '</strong>';
-    echo '  </div>';
-    echo '  <div style="background:#f9f9f9; padding:15px 5px; border-radius:8px;">';
-    echo '    <span class="dashicons dashicons-warning" style="color:#d98c00; font-size:24px; width:auto; height:auto;"></span><br>';
-    echo '    <small>未対応注文</small><br><strong style="font-size:1.2em;">' . number_format(intval($pending_count)) . '件</strong>';
-    echo '  </div>';
-    echo '</div>';
+    // Get order counts
+    $pending = $wpdb->get_var("SELECT COUNT(*) FROM $orders_table WHERE status = 'pending_payment'");
+    $processing = $wpdb->get_var("SELECT COUNT(*) FROM $orders_table WHERE status = 'processing'");
     
-    echo '<div style="margin-top:20px; display:flex; gap:10px;">';
-    echo '  <a href="' . esc_url($orders_url) . '" class="button button-primary">注文を確認する</a>';
-	echo '  <a href="' . esc_url($manual_url) . '" class="button" target="_blank">マニュアルを開く</a>';
+    // Get recent error count (last 24h)
+    $error_count = $wpdb->get_var("SELECT COUNT(*) FROM $logs_table WHERE level = 'error' AND log_date > DATE_SUB(NOW(), INTERVAL 1 DAY)");
+
+    echo '<div class="photo-dashboard-stats">';
+    echo '<p><span class="dashicons dashicons-cart"></span> <strong>受信した注文:</strong></p>';
+    echo '<ul>';
+    echo '<li>入金待ち: <a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-orders') . '">' . intval($pending) . ' 件</a></li>';
+    echo '<li>準備中（決済済）: <a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-orders') . '">' . intval($processing) . ' 件</a></li>';
+    echo '</ul>';
+    
+    if ($error_count > 0) {
+        echo '<p style="color:#d63638;"><span class="dashicons dashicons-warning"></span> <strong>直近24時間のシステムエラー:</strong> <a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-logs') . '" style="color:#d63638;">' . intval($error_count) . ' 件</a></p>';
+    } else {
+        echo '<p style="color:#22c55e;"><span class="dashicons dashicons-yes-alt"></span> システムは正常に稼働しています。</p>';
+    }
+    
+    echo '<hr style="margin:15px 0 10px;">';
+    echo '<p><a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-settings') . '" class="button">各種設定</a> ';
+    echo '<a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-orders') . '" class="button button-primary">注文管理</a></p>';
     echo '</div>';
 }
 
@@ -1290,48 +1288,3 @@ function photo_purchase_get_active_payment_methods_text($type = 'label')
 	return implode('、', $methods);
 }
 
-/**
- * Add Simple EC Dashboard Widget
- */
-function photo_purchase_register_dashboard_widget() {
-    wp_add_dashboard_widget(
-        'photo_purchase_dashboard_status',
-        'Simple EC ステータス',
-        'photo_purchase_dashboard_widget_content'
-    );
-}
-add_action('wp_dashboard_setup', 'photo_purchase_register_dashboard_widget');
-
-/**
- * Dashboard Widget Content
- */
-function photo_purchase_dashboard_widget_content() {
-    global $wpdb;
-    $orders_table = $wpdb->prefix . 'photo_orders';
-    $logs_table = $wpdb->prefix . 'photo_system_logs';
-
-    // Get order counts
-    $pending = $wpdb->get_var("SELECT COUNT(*) FROM $orders_table WHERE status = 'pending_payment'");
-    $processing = $wpdb->get_var("SELECT COUNT(*) FROM $orders_table WHERE status = 'processing'");
-    
-    // Get recent error count (last 24h)
-    $error_count = $wpdb->get_var("SELECT COUNT(*) FROM $logs_table WHERE level = 'error' AND log_date > DATE_SUB(NOW(), INTERVAL 1 DAY)");
-
-    echo '<div class="photo-dashboard-stats">';
-    echo '<p><span class="dashicons dashicons-cart"></span> <strong>受信した注文:</strong></p>';
-    echo '<ul>';
-    echo '<li>入金待ち: <a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-orders') . '">' . intval($pending) . ' 件</a></li>';
-    echo '<li>準備中（決済済）: <a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-orders') . '">' . intval($processing) . ' 件</a></li>';
-    echo '</ul>';
-    
-    if ($error_count > 0) {
-        echo '<p style="color:#d63638;"><span class="dashicons dashicons-warning"></span> <strong>直近24時間のシステムエラー:</strong> <a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-logs') . '" style="color:#d63638;">' . intval($error_count) . ' 件</a></p>';
-    } else {
-        echo '<p style="color:#22c55e;"><span class="dashicons dashicons-yes-alt"></span> システムは正常に稼働しています。</p>';
-    }
-    
-    echo '<hr style="margin:15px 0 10px;">';
-    echo '<p><a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-settings') . '" class="button">各種設定</a> ';
-    echo '<a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-orders') . '" class="button button-primary">注文管理</a></p>';
-    echo '</div>';
-}
