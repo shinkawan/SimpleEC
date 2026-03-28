@@ -346,8 +346,8 @@
         <li><a href="#csv">受注データのCSV出力</a></li>
         <li><a href="#stock-alert">在庫アラート機能</a></li>
         <li><a href="#shortcodes">利用可能なショートコード一覧</a></li>
+        <li><a href="#membership-terms">会員規約の設定 [v3.10.0]</a></li>
         <li><a href="#security">セキュリティと信頼性</a></li>
-        <li><a href="#membership-terms">会員規約の設定 [v3.9.0]</a></li>
         <li><a href="#faq">よくある質問</a></li>
       </ol>
     </nav>
@@ -1048,10 +1048,34 @@
       </table>
     </section>
 
+    <!-- 17. 会員規約（利用規約）の設定 [v3.10.0] -->
+    <section id="membership-terms">
+      <h2>17. 会員規約（利用規約）の設定 [v3.10.0]</h2>
+      <p>オンラインショップ運営に欠かせない会員規約を、簡単に管理・表示できる機能です。</p>
+      
+      <div class="card">
+        <h4>📄 自動生成と表示</h4>
+        <ul style="padding-left:20px;">
+          <li><strong>固定ページの自動生成</strong>: プラグインを有効化した際、自動的に「会員規約」という固定ページが作成され、ショートコード <code>[ec_membership_terms]</code> が挿入されます。</li>
+          <li><strong>デフォルト規約のセット</strong>: 初回インストール時に、標準的な第1条〜第12条からなる規約文がデータベースに保存されます。</li>
+          <li><strong>ショートコード <code>[ショップ名]</code></strong>: 規約本文内で <code>[ショップ名]</code> または <code>[ec_shop_name]</code> を使用すると、WordPressの設定にある「サイト名」が自動的に表示されます。</li>
+        </ul>
+      </div>
 
-    <!-- 17. セキュリティと信頼性 -->
+      <div class="card">
+        <h4>⚙️ 規約の編集方法</h4>
+        <p>WordPress管理画面 → <strong>各種商品 → 各種設定 → 会員規約</strong> タブから、規約のタイトルと本文を自由に編集できます。HTMLタグも使用可能です。</p>
+      </div>
+
+      <div class="alert alert-info">
+        <strong>💡 みなし同意について</strong><br>
+        ショッピングカートのチェックアウト画面やログイン画面には、「認証を行うことで、会員規約に同意したものとみなされます」という一文が自動的に表示されるようになっています。
+      </div>
+    </section>
+
+    <!-- 18. セキュリティと信頼性 -->
     <section id="security">
-      <h2>17. セキュリティと信頼性</h2>
+      <h2>18. セキュリティと信頼性</h2>
       <div class="card">
         <p>本プラグインは商用利用を前提として、以下のセキュリティ対策を講じています。</p>
         <ul style="padding-left:20px;">
@@ -1062,9 +1086,9 @@
       </div>
     </section>
 
-    <!-- 18. よくある質問 -->
+    <!-- 19. よくある質問 -->
     <section id="faq">
-      <h2>18. よくある質問</h2>
+      <h2>19. よくある質問</h2>
 
       <div class="card">
         <h4>Q. 購入者からメールが届いていないと言われた</h4>
