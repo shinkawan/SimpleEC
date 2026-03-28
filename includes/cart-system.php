@@ -168,6 +168,26 @@ function photo_purchase_checkout_shortcode()
                         </p>
                     <?php endif; ?>
                     <?php echo photo_purchase_render_sns_login_buttons(); ?>
+                    
+                    <div id="photo-otp-login-area" style="margin-top:20px; border-top: 1px dashed #ccc; padding-top: 20px;">
+                        <p style="font-size: 0.9rem; color: #666; margin-bottom:15px;"><?php _e('メールアドレスで認証（過去にご利用のある方向け）', 'photo-purchase'); ?></p>
+                        
+                        <div id="photo-otp-step-1">
+                            <input type="email" id="photo-otp-email" placeholder="<?php _e('メールアドレス', 'photo-purchase'); ?>" style="width: 100%; max-width: 300px; padding: 10px; border-radius: 6px; border: 1px solid #ddd; margin-bottom: 10px;">
+                            <br>
+                            <button type="button" id="photo-otp-send-btn" class="button button-secondary" style="padding: 8px 20px; border-radius: 20px;"><?php _e('認証コードを送信', 'photo-purchase'); ?></button>
+                            <div id="photo-otp-msg-1" style="color: red; font-size: 13px; margin-top: 10px; display:none;"></div>
+                        </div>
+
+                        <div id="photo-otp-step-2" style="display:none;">
+                            <p style="font-size:13px; color:#333; margin-bottom:10px;"><?php _e('メール宛に届いた6桁のコードを入力してください', 'photo-purchase'); ?></p>
+                            <input type="text" id="photo-otp-code" placeholder="123456" maxlength="6" style="width: 100%; max-width: 150px; padding: 10px; border-radius: 6px; border: 1px solid #ddd; margin-bottom: 10px; text-align:center; font-size: 1.2rem; letter-spacing: 5px;">
+                            <br>
+                            <button type="button" id="photo-otp-verify-btn" class="button button-primary" style="padding: 8px 30px; border-radius: 20px;"><?php _e('ログイン', 'photo-purchase'); ?></button>
+                            <div id="photo-otp-msg-2" style="color: red; font-size: 13px; margin-top: 10px; display:none;"></div>
+                        </div>
+                    </div>
+
                 </div>
             <?php endif; ?>
 
@@ -299,6 +319,111 @@ function photo_purchase_checkout_shortcode()
     </form>
     <?php
     echo '</div></div>';
+    
+    // Inject OTP login JS
+    ?>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var sendBtn = document.getElementById('photo-otp-send-btn');
+        var verifyBtn = document.getElementById('photo-otp-verify-btn');
+        if (!sendBtn || !verifyBtn) return;
+
+        sendBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            var email = document.getElementById('photo-otp-email').value;
+            var msg1 = document.getElementById('photo-otp-msg-1');
+            
+            if (!email) {
+                msg1.style.color = 'red';
+                msg1.textContent = '<?php _e("メールアドレスを入力してください。", "photo-purchase"); ?>';
+                msg1.style.display = 'block';
+                return;
+            }
+
+            msg1.style.color = '#666';
+            msg1.textContent = '<?php _e("送信中...", "photo-purchase"); ?>';
+            msg1.style.display = 'block';
+            sendBtn.disabled = true;
+
+            var formData = new FormData();
+            formData.append('action', 'photo_send_otp');
+            formData.append('nonce', typeof photoPurchase !== 'undefined' ? photoPurchase.nonce : '');
+            formData.append('email', email);
+
+            fetch(typeof photoPurchase !== 'undefined' ? photoPurchase.ajax_url : '', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                sendBtn.disabled = false;
+                if (data.success) {
+                    msg1.style.display = 'none';
+                    document.getElementById('photo-otp-step-1').style.display = 'none';
+                    document.getElementById('photo-otp-step-2').style.display = 'block';
+                } else {
+                    msg1.style.color = 'red';
+                    msg1.textContent = data.data.message || '<?php _e("エラーが発生しました。", "photo-purchase"); ?>';
+                }
+            })
+            .catch(err => {
+                sendBtn.disabled = false;
+                msg1.style.color = 'red';
+                msg1.textContent = '<?php _e("通信エラーが発生しました。", "photo-purchase"); ?>';
+            });
+        });
+
+        verifyBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            var email = document.getElementById('photo-otp-email').value;
+            var code = document.getElementById('photo-otp-code').value;
+            var msg2 = document.getElementById('photo-otp-msg-2');
+            
+            if (!code || code.length !== 6) {
+                msg2.style.color = 'red';
+                msg2.textContent = '<?php _e("6桁の認証コードを入力してください。", "photo-purchase"); ?>';
+                msg2.style.display = 'block';
+                return;
+            }
+
+            msg2.style.color = '#666';
+            msg2.textContent = '<?php _e("認証中...", "photo-purchase"); ?>';
+            msg2.style.display = 'block';
+            verifyBtn.disabled = true;
+
+            var formData = new FormData();
+            formData.append('action', 'photo_verify_otp');
+            formData.append('nonce', typeof photoPurchase !== 'undefined' ? photoPurchase.nonce : '');
+            formData.append('email', email);
+            formData.append('code', code);
+
+            fetch(typeof photoPurchase !== 'undefined' ? photoPurchase.ajax_url : '', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                verifyBtn.disabled = false;
+                if (data.success) {
+                    msg2.style.color = '#28a745';
+                    msg2.textContent = data.data.message || '<?php _e("認証成功！リロードしています...", "photo-purchase"); ?>';
+                    setTimeout(function(){
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    msg2.style.color = 'red';
+                    msg2.textContent = data.data.message || '<?php _e("エラーが発生しました。", "photo-purchase"); ?>';
+                }
+            })
+            .catch(err => {
+                verifyBtn.disabled = false;
+                msg2.style.color = 'red';
+                msg2.textContent = '<?php _e("通信エラーが発生しました。", "photo-purchase"); ?>';
+            });
+        });
+    });
+    </script>
+    <?php
     return ob_get_clean();
 }
 add_shortcode('ec_checkout', 'photo_purchase_checkout_shortcode');

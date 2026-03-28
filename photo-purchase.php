@@ -1282,6 +1282,7 @@ require_once PHOTO_PURCHASE_PATH . 'includes/order-manager.php';
 require_once PHOTO_PURCHASE_PATH . 'includes/admin-log.php';
 require_once PHOTO_PURCHASE_PATH . 'includes/stripe-webhooks.php';
 require_once PHOTO_PURCHASE_PATH . 'includes/sns-handler.php';
+require_once PHOTO_PURCHASE_PATH . 'includes/auth-system.php';
 
 /**
  * Enqueue Frontend Assets
