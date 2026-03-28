@@ -371,6 +371,7 @@ function photo_purchase_settings_page()
 			update_option('photo_pp_tokusho_sub_cycle', sanitize_textarea_field($_POST['tokusho_sub_cycle']));
 			update_option('photo_pp_tokusho_sub_cancellation', sanitize_textarea_field($_POST['tokusho_sub_cancellation']));
 		} elseif ($active_tab == 'sns') {
+			update_option('photo_pp_enable_sns_login', isset($_POST['enable_sns_login']) ? '1' : '0');
 			update_option('photo_pp_google_client_id', sanitize_text_field($_POST['google_client_id']));
 			update_option('photo_pp_google_client_secret', sanitize_text_field($_POST['google_client_secret']));
 			update_option('photo_pp_line_client_id', sanitize_text_field($_POST['line_client_id']));
@@ -843,6 +844,19 @@ function photo_purchase_settings_page()
 					</tr>
 				</table>
 			<?php elseif ($active_tab == 'sns'): ?>
+				<h3 class="title"><?php _e('SNS連携の有効化', 'photo-purchase'); ?></h3>
+				<table class="form-table">
+					<tr>
+						<th><?php _e('SNSログイン機能', 'photo-purchase'); ?></th>
+						<td>
+							<label>
+								<input type="checkbox" name="enable_sns_login" value="1" <?php checked(get_option('photo_pp_enable_sns_login', '1'), '1'); ?>>
+								<?php _e('SNSログインを有効にする', 'photo-purchase'); ?>
+							</label>
+						</td>
+					</tr>
+				</table>
+
 				<h3 class="title"><?php _e('Google ログイン設定', 'photo-purchase'); ?></h3>
 				<table class="form-table">
 					<tr>

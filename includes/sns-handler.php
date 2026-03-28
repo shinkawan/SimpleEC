@@ -42,6 +42,7 @@ function photo_purchase_get_sns_redirect_uri($sns) {
  * @param string $return_url URL to redirect back to after login
  */
 function photo_purchase_get_sns_auth_url($sns, $return_url = '') {
+    if (get_option('photo_pp_enable_sns_login', '1') !== '1') return false;
     $config = photo_purchase_get_sns_config();
     if (!isset($config[$sns])) return false;
 
@@ -77,6 +78,9 @@ function photo_purchase_get_sns_auth_url($sns, $return_url = '') {
  * Handle SNS Callback
  */
 function photo_purchase_handle_sns_callback() {
+    if (get_option('photo_pp_enable_sns_login', '1') !== '1') {
+        wp_die(__('SNSログイン機能は現在無効化されています。', 'photo-purchase'));
+    }
     if (!isset($_GET['pp_sns_callback']) || !isset($_GET['code']) || !isset($_GET['state'])) return;
 
     $sns = sanitize_text_field($_GET['pp_sns_callback']);
@@ -267,6 +271,10 @@ function photo_purchase_restrict_admin_access() {
  * Render SNS Login Buttons
  */
 function photo_purchase_render_sns_login_buttons() {
+    if (get_option('photo_pp_enable_sns_login', '1') !== '1') {
+        return '';
+    }
+
     $config = photo_purchase_get_sns_config();
     $enabled_sns = array();
 
