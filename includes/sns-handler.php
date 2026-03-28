@@ -288,7 +288,7 @@ function photo_purchase_render_sns_login_buttons() {
     }
 
     ob_start();
-    $current_url = home_url(add_query_arg(null, null));
+    $current_url = set_url_scheme('http://' . wp_unslash($_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI']));
     ?>
     <div class="photo-sns-login-container">
         <p class="photo-sns-login-title"><?php _e('またはSNSアカウントでログイン', 'photo-purchase'); ?></p>
