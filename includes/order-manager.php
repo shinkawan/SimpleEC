@@ -3107,15 +3107,16 @@ function photo_purchase_member_dashboard_shortcode($atts)
         $table_name = $wpdb->prefix . 'photo_orders';
         
         // 注文データの取得 (email または user_id)
+        // 管理画面のデフォルトタブと同様に「未決済のまま中断されたStripe/PayPay注文(放置注文)」を非表示にする
         if (is_user_logged_in()) {
             $user_id = get_current_user_id();
             $orders = $wpdb->get_results($wpdb->prepare(
-                "SELECT * FROM $table_name WHERE user_id = %d OR buyer_email = %s ORDER BY created_at DESC", 
+                "SELECT * FROM $table_name WHERE (user_id = %d OR buyer_email = %s) AND NOT (status = 'pending_payment' AND payment_method IN ('stripe', 'paypay')) ORDER BY created_at DESC", 
                 $user_id, $auth_email
             ));
         } else {
             $orders = $wpdb->get_results($wpdb->prepare(
-                "SELECT * FROM $table_name WHERE buyer_email = %s ORDER BY created_at DESC", 
+                "SELECT * FROM $table_name WHERE buyer_email = %s AND NOT (status = 'pending_payment' AND payment_method IN ('stripe', 'paypay')) ORDER BY created_at DESC", 
                 $auth_email
             ));
         }
