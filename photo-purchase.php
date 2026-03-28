@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Simple EC
  * Description: 簡易的な写真・デジタルコンテンツ販売プラグイン。Stripe、PayPay、代引き、銀行振込に対応。
- * Version: 3.8.0
+ * Version: 3.9.0
  * Author: アートフレア株式会社
  * Author URI: https://www.artflair.co.jp/
  * Text Domain: photo-purchase
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define constants
-define('PHOTO_PURCHASE_VERSION', '3.8.0');
+define('PHOTO_PURCHASE_VERSION', '3.9.0');
 define('PHOTO_PURCHASE_PATH', plugin_dir_path(__FILE__));
 define('PHOTO_PURCHASE_URL', plugin_dir_url(__FILE__));
 
