@@ -378,6 +378,8 @@ function photo_purchase_settings_page()
 			update_option('photo_pp_line_client_secret', sanitize_text_field($_POST['line_client_secret']));
 		}
 
+		photo_purchase_log('info', '各種設定を更新しました。', array('tab' => $active_tab, 'user' => get_current_user_id()));
+
 		echo '<div class="updated"><p>' . __('設定を保存しました。', 'photo-purchase') . '</p></div>';
 	}
 

@@ -319,7 +319,7 @@
   <header>
     <h1>🛒シンプルECプラグイン</h1>
     <p>管理者・オーナー向けマニュアル</p>
-    <div class="version-badge">v3.8.0 (インボイス・帳票・一括編集・在庫アラート搭載版)</div>
+    <div class="version-badge">v3.9.0 (OTP認証・SNS切替・インボイス・帳票搭載版)</div>
   </header>
 
   <div class="container">
@@ -336,6 +336,7 @@
         <li><a href="#tracking">配送状況の追跡連携</a></li>
         <li><a href="#member">会員機能とマイページ</a></li>
         <li><a href="#sns-login">SNSログイン連携 (Google / LINE)</a></li>
+        <li><a href="#system-log">システムログの確認</a></li>
         <li><a href="#status">注文ステータスフロー</a></li>
         <li><a href="#actions">各種アクション操作</a></li>
         <li><a href="#coupon">クーポン管理</a></li>
@@ -601,8 +602,13 @@
 
     <!-- 7. 会員機能とマイページ -->
     <section id="member">
-      <h2>7. 会員機能とマイページ [v3.8.0]</h2>
+      <h2>7. 会員機能とマイページ [v3.9.0]</h2>
       <p>購入履歴の確認、配送先情報の管理、サブスクリプションの管理ができる統合マイページ機能です。</p>
+
+      <div class="alert alert-success">
+        🛡️ <strong>パスワード不要の安全なログイン (OTP)</strong><br>
+        セキュリティ向上のため、パスワードの設定・管理を完全に廃止しました。登録メールアドレスに届く <strong>「6桁の認証コード（ワンタイムパスワード）」</strong> を入力するだけで、安全かつ簡単にログインできます。
+      </div>
       
       <div class="card">
         <h4>👤 会員情報の自動保存と活用</h4>
@@ -638,6 +644,7 @@
         <h4>🛠️ 管理者側の設定手順</h4>
         <ol style="padding-left:20px; font-size:0.95rem;">
           <li><strong>各種設定 → SNS連携</strong> タブを開きます。</li>
+          <li><strong>SNSログインを有効にする</strong> チェックボックスで、機能全体のON/OFFを切り替えられます。</li>
           <li>Google Cloud Console または LINE Developers で作成した <strong>クライアントID</strong> と <strong>クライアントシークレット</strong> を入力します。</li>
           <li>設定画面に表示されている「コールバックURL」を、各SNS側の設定（承認済みのリダイレクトURI）に登録してください。</li>
         </ol>
@@ -645,6 +652,26 @@
 
       <div class="alert alert-info">
         💡 <strong>シンプルな会員登録</strong>: 初めてSNSでログインした際、自動的にWordPressアカウントが作成されます（メールアドレスが連携されます）。
+      </div>
+    </section>
+
+    <!-- 7.6 システムログの確認 -->
+    <section id="system-log">
+      <h2>システムログの確認 [v3.9.0]</h2>
+      <p>決済エラーやWebhookの失敗など、システムの稼働状況をリアルタイムで確認・管理できます。</p>
+
+      <div class="card">
+        <h4>📋 ログの閲覧方法</h4>
+        <p>WordPressメニュー：<strong>各種商品 → システムログ</strong> を開きます。</p>
+        <ul style="padding-left:20px;">
+          <li><strong>最新100件を表示</strong>: 発生日時、エラーレベル（ERROR/INFOなど）、メッセージ、および詳細なデータが一覧で表示されます。</li>
+          <li><strong>エラーの特定</strong>: StripeのWebhookが認証できなかった場合や、メール送信に失敗した際などの原因調査に役立ちます。</li>
+          <li><strong>ログの消去</strong>: 定期的に「ログをすべて消去」ボタンでデータをリセットできます（最新500件を超えると自動的に古いものから削除されるため、肥大化の心配はありません）。</li>
+        </ul>
+      </div>
+
+      <div class="alert alert-info">
+        💡 <strong>「ログはありません」と表示される場合</strong>: システムが正常に稼働し、エラーが一度も発生していない状態です。エラーが発生した際のみ記録されます。
       </div>
     </section>
 
@@ -806,7 +833,7 @@
         <p>購入者は以下の方法で自身のサブスクリプションを管理（解約、カード変更など）できます。</p>
         <ul style="padding-left:20px;">
           <li><strong>注文照会ページ</strong>: 照会結果の画面に表示される「サブスクリプション管理」ボタンから移動。</li>
-          <li><strong>統合マイページ</strong>: <code>[ec_member_dashboard]</code> を設置したページから（登録メールアドレスへの認証コード送信による安全なログインが可能です）。</li>
+          <li><strong>統合マイページ</strong>: <code>[ec_member_dashboard]</code> を設置したページから（メール認証コードによる安全なログインが可能です）。</li>
         </ul>
       </div>
 
@@ -973,7 +1000,7 @@
         </tr>
         <tr>
           <td><code>[ec_member_dashboard]</code></td>
-          <td>統合マイページを表示します。ログインユーザーとゲストの両方に対応し、履歴確認やサブスク管理が可能です [v3.8.0]</td>
+          <td>統合マイページを表示します。パスワード不要のメール認証（OTP）ログインに対応。履歴確認やサブスク管理が可能です [v3.9.0]</td>
         </tr>
       </table>
     </section>
@@ -1032,7 +1059,7 @@
   </div>
 
   <footer>
-    <p>シンプルECプラグイン v3.8.0 &nbsp;|&nbsp; 管理マニュアル</p>
+    <p>シンプルECプラグイン v3.9.0 &nbsp;|&nbsp; 管理マニュアル</p>
   </footer>
 
 </body>
