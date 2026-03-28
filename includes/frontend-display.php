@@ -70,6 +70,25 @@ function photo_purchase_gallery_shortcode($atts)
 
     ob_start();
 
+    if (is_user_logged_in()) {
+        $current_user = wp_get_current_user();
+        $user_name = $current_user->display_name ?: $current_user->user_login;
+        $mypage_url = function_exists('photo_purchase_get_dashboard_url') ? photo_purchase_get_dashboard_url() : home_url('/dashboard/');
+        $logout_url = wp_logout_url(home_url(add_query_arg(null, null)));
+        ?>
+        <div class="ec-user-status-bar" style="background: #f8fafc; padding: 12px 25px; border-radius: 15px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; border: 1px solid #e2e8f0;">
+            <div style="font-size: 14px; font-weight: 600; color: #334155; display: flex; align-items: center; gap: 8px;">
+                <span style="display:inline-block; width:8px; height:8px; background:#10b981; border-radius:50%;"></span>
+                <?php echo sprintf(__('ようこそ、%s 様', 'photo-purchase'), esc_html($user_name)); ?>
+            </div>
+            <div style="display: flex; gap: 15px;">
+                <a href="<?php echo esc_url($mypage_url); ?>" style="font-size: 13px; color: #4f46e5; font-weight: 700; text-decoration: none;"><?php _e('マイページ', 'photo-purchase'); ?></a>
+                <a href="<?php echo esc_url($logout_url); ?>" style="font-size: 13px; color: #ef4444; font-weight: 700; text-decoration: none;"><?php _e('ログアウト', 'photo-purchase'); ?></a>
+            </div>
+        </div>
+        <?php
+    }
+
     if ($query->have_posts()) {
         ?>
         <div class="ec-gallery-controls-panel" style="background: #fff; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); margin-bottom: 40px; border: 1px solid #eee;">

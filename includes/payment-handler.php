@@ -111,6 +111,19 @@ function photo_purchase_handle_multi_checkout()
         'notes' => isset($_POST['photo_order_notes']) ? sanitize_textarea_field($_POST['photo_order_notes']) : '',
     );
 
+    // Feature: Save shipping info to user profile if logged in
+    $current_user_id = get_current_user_id();
+    if ($current_user_id) {
+        update_user_meta($current_user_id, 'billing_phone', $order_data['buyer']['phone']);
+        update_user_meta($current_user_id, 'billing_postcode', $order_data['shipping']['zip']);
+        update_user_meta($current_user_id, 'billing_state', $order_data['shipping']['pref']);
+        
+        // We split the single address textarea into address_1 for simplicity/WooCommerce compatibility if needed, 
+        // or just store the whole thing in address_1.
+        update_user_meta($current_user_id, 'billing_address_1', $order_data['shipping']['address']);
+        update_user_meta($current_user_id, 'billing_address_2', ''); // Clear address_2 to avoid duplicates if we combined them
+    }
+
     // Save to Database
     if (function_exists('photo_purchase_save_order')) {
         photo_purchase_save_order($order_token, $order_data);
@@ -593,7 +606,8 @@ function photo_purchase_create_portal_session($customer_id)
     $secret_key = get_option('photo_pp_stripe_secret_key');
     if (!$secret_key || !$customer_id) return false;
 
-    $return_url = home_url();
+    $my_page_id = get_option('photo_my_page_id');
+    $return_url = ($my_page_id) ? get_permalink($my_page_id) : home_url();
 
     $args = array(
         'headers' => array(

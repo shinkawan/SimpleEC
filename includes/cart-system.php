@@ -156,21 +156,44 @@ function photo_purchase_checkout_shortcode()
         <?php wp_nonce_field('photo_purchase_checkout', 'checkout_nonce'); ?>
 
         <div class="checkout-sections" style="display: grid; grid-template-columns: 1fr; gap: 30px;">
+            <?php 
+            $current_user = wp_get_current_user();
+            // Show for guests OR admins (for preview)
+            if (!$current_user->exists() || current_user_can('manage_options')): ?>
+                <div class="checkout-login-prompt" style="background: #f8f9fa; border: 1px solid #e9ecef; padding: 25px; border-radius: 12px; margin-bottom: 30px; text-align: center;">
+                    <h3 style="margin-top: 0; font-size: 1.1rem; color: #333;"><?php _e('会員の方はログインして購入', 'photo-purchase'); ?></h3>
+                    <?php if (current_user_can('manage_options') && $current_user->exists()): ?>
+                        <p style="background:#fff3cd; color:#856404; padding:8px; border-radius:6px; font-size:12px; margin-bottom:15px; border:1px solid #ffeeba;">
+                            <?php _e('【管理者プレビュー】ログイン中ですが、確認用に表示しています。', 'photo-purchase'); ?>
+                        </p>
+                    <?php endif; ?>
+                    <?php echo photo_purchase_render_sns_login_buttons(); ?>
+                </div>
+            <?php endif; ?>
+
+            <?php 
+            $u_name = $current_user->exists() ? ($current_user->display_name ?: $current_user->user_login) : '';
+            $u_email = $current_user->exists() ? $current_user->user_email : '';
+            $u_phone = $current_user->exists() ? get_user_meta($current_user->ID, 'billing_phone', true) : '';
+            $u_zip = $current_user->exists() ? get_user_meta($current_user->ID, 'billing_postcode', true) : '';
+            $u_pref = $current_user->exists() ? get_user_meta($current_user->ID, 'billing_state', true) : '';
+            $u_addr = $current_user->exists() ? get_user_meta($current_user->ID, 'billing_address_1', true) . get_user_meta($current_user->ID, 'billing_address_2', true) : '';
+            ?>
             <div class="buyer-info">
                 <h3><?php _e('お客様情報', 'photo-purchase'); ?></h3>
                 <p>
                     <label><?php _e('お名前', 'photo-purchase'); ?> <span style="color:red;">*</span></label><br>
-                    <input type="text" name="buyer_name" required
+                    <input type="text" name="buyer_name" required value="<?php echo esc_attr($u_name); ?>"
                         style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;">
                 </p>
                 <p>
                     <label><?php _e('メールアドレス', 'photo-purchase'); ?> <span style="color:red;">*</span></label><br>
-                    <input type="email" name="buyer_email" required
+                    <input type="email" name="buyer_email" required value="<?php echo esc_attr($u_email); ?>"
                         style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;">
                 </p>
                 <p>
                     <label><?php _e('電話番号', 'photo-purchase'); ?></label><br>
-                    <input type="tel" name="buyer_phone"
+                    <input type="tel" name="buyer_phone" value="<?php echo esc_attr($u_phone); ?>"
                         style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;">
                 </p>
                 <p>
@@ -184,7 +207,7 @@ function photo_purchase_checkout_shortcode()
                 <h3><?php _e('お届け先情報', 'photo-purchase'); ?></h3>
                 <p>
                     <label><?php _e('郵便番号', 'photo-purchase'); ?> <span style="color:red;">*</span></label><br>
-                    <input type="text" name="shipping_zip" placeholder="123-4567"
+                    <input type="text" name="shipping_zip" placeholder="123-4567" value="<?php echo esc_attr($u_zip); ?>"
                         style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;">
                 </p>
                 <p>
@@ -194,8 +217,8 @@ function photo_purchase_checkout_shortcode()
                         <option value=""><?php _e('-- 選択してください --', 'photo-purchase'); ?></option>
                         <?php
                         $prefectures = ["北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県", "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県", "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県", "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県", "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"];
-                        foreach ($prefectures as $pref) {
-                            echo '<option value="' . esc_attr($pref) . '">' . esc_html($pref) . '</option>';
+                        foreach ($prefectures as $p) {
+                            echo '<option value="' . esc_attr($p) . '" ' . selected($u_pref, $p, false) . '>' . esc_html($p) . '</option>';
                         }
                         ?>
                     </select>
@@ -203,7 +226,7 @@ function photo_purchase_checkout_shortcode()
                 <p>
                     <label><?php _e('市区町村・番地', 'photo-purchase'); ?> <span style="color:red;">*</span></label><br>
                     <textarea name="shipping_address" rows="2"
-                        style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;"></textarea>
+                        style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;"><?php echo esc_textarea($u_addr); ?></textarea>
                 </p>
             </div>
 

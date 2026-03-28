@@ -28,6 +28,7 @@ function photo_purchase_create_db_table()
 
 	$sql = "CREATE TABLE $table_name (
 		id mediumint(9) NOT NULL AUTO_INCREMENT,
+		user_id bigint(20) DEFAULT 0 NOT NULL,
 		order_token varchar(255) NOT NULL,
 		buyer_name varchar(255) NOT NULL,
 		buyer_email varchar(255) NOT NULL,
@@ -40,6 +41,7 @@ function photo_purchase_create_db_table()
 		stripe_subscription_id varchar(100) DEFAULT '' NOT NULL,
 		stripe_customer_id varchar(100) DEFAULT '' NOT NULL,
 		tracking_number varchar(255) DEFAULT '' NOT NULL,
+		carrier varchar(50) DEFAULT '' NOT NULL,
 		coupon_info text NOT NULL,
 		order_notes text NOT NULL,
 		created_at datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
@@ -79,6 +81,16 @@ function photo_purchase_create_db_table()
 	$cust_col_exists = $wpdb->get_results("SHOW COLUMNS FROM `$table_name` LIKE 'stripe_customer_id'");
 	if (empty($cust_col_exists)) {
 		$wpdb->query("ALTER TABLE `$table_name` ADD `stripe_customer_id` varchar(100) DEFAULT '' NOT NULL AFTER `stripe_subscription_id` ");
+	}
+
+	$carrier_exists = $wpdb->get_results("SHOW COLUMNS FROM `$table_name` LIKE 'carrier'");
+	if (empty($carrier_exists)) {
+		$wpdb->query("ALTER TABLE `$table_name` ADD `carrier` varchar(50) DEFAULT '' NOT NULL AFTER `tracking_number` ");
+	}
+
+	$user_col_exists = $wpdb->get_results("SHOW COLUMNS FROM `$table_name` LIKE 'user_id'");
+	if (empty($user_col_exists)) {
+		$wpdb->query("ALTER TABLE `$table_name` ADD `user_id` bigint(20) DEFAULT 0 NOT NULL AFTER `id` ");
 	}
 
 	// Coupon table expansion
@@ -189,15 +201,6 @@ function photo_purchase_admin_menus()
 		'photo_purchase_coupons_page'
 	);
 
-	// 商品CSV一括編集
-	add_submenu_page(
-		'edit.php?post_type=photo_product',
-		__('商品CSV一括編集', 'photo-purchase'),
-		__('商品CSV一括編集', 'photo-purchase'),
-		'manage_options',
-		'photo-purchase-bulk-edit',
-		'photo_purchase_bulk_edit_page'
-	);
 
 	// システムログ
 	add_submenu_page(
@@ -227,10 +230,10 @@ add_action('init', function() {
         }
         
         // For non-admin, ensure it's their own order if needed, but the token in inquiry handles this.
-        // Actually, print_doc should probably take order_token too for frontend security.
+        $order_token = isset($_GET['order_token']) ? sanitize_text_field($_GET['order_token']) : '';
         
         if (function_exists('photo_purchase_order_print_view')) {
-            photo_purchase_order_print_view($order_id, $type);
+            photo_purchase_order_print_view($order_id, $type, $order_token);
             exit;
         }
     }
@@ -367,6 +370,11 @@ function photo_purchase_settings_page()
 			update_option('photo_pp_tokusho_return', sanitize_textarea_field($_POST['tokusho_return']));
 			update_option('photo_pp_tokusho_sub_cycle', sanitize_textarea_field($_POST['tokusho_sub_cycle']));
 			update_option('photo_pp_tokusho_sub_cancellation', sanitize_textarea_field($_POST['tokusho_sub_cancellation']));
+		} elseif ($active_tab == 'sns') {
+			update_option('photo_pp_google_client_id', sanitize_text_field($_POST['google_client_id']));
+			update_option('photo_pp_google_client_secret', sanitize_text_field($_POST['google_client_secret']));
+			update_option('photo_pp_line_client_id', sanitize_text_field($_POST['line_client_id']));
+			update_option('photo_pp_line_client_secret', sanitize_text_field($_POST['line_client_secret']));
 		}
 
 		echo '<div class="updated"><p>' . __('設定を保存しました。', 'photo-purchase') . '</p></div>';
@@ -388,6 +396,8 @@ function photo_purchase_settings_page()
 				class="nav-tab <?php echo $active_tab == 'shipping' ? 'nav-tab-active' : ''; ?>"><?php _e('送料設定', 'photo-purchase'); ?></a>
 			<a href="?post_type=photo_product&page=photo-purchase-settings&tab=tokushoho"
 				class="nav-tab <?php echo $active_tab == 'tokushoho' ? 'nav-tab-active' : ''; ?>"><?php _e('特定商取引法', 'photo-purchase'); ?></a>
+			<a href="?post_type=photo_product&page=photo-purchase-settings&tab=sns"
+				class="nav-tab <?php echo $active_tab == 'sns' ? 'nav-tab-active' : ''; ?>"><?php _e('SNS連携', 'photo-purchase'); ?></a>
 		</h2>
 
 		<form method="post"
@@ -832,6 +842,40 @@ function photo_purchase_settings_page()
 						</td>
 					</tr>
 				</table>
+			<?php elseif ($active_tab == 'sns'): ?>
+				<h3 class="title"><?php _e('Google ログイン設定', 'photo-purchase'); ?></h3>
+				<table class="form-table">
+					<tr>
+						<th><label for="google_client_id"><?php _e('クライアントID', 'photo-purchase'); ?></label></th>
+						<td><input type="text" name="google_client_id" id="google_client_id" value="<?php echo esc_attr(get_option('photo_pp_google_client_id', '')); ?>" class="large-text"></td>
+					</tr>
+					<tr>
+						<th><label for="google_client_secret"><?php _e('クライアントシークレット', 'photo-purchase'); ?></label></th>
+						<td><input type="password" name="google_client_secret" id="google_client_secret" value="<?php echo esc_attr(get_option('photo_pp_google_client_secret', '')); ?>" class="large-text"></td>
+					</tr>
+					<tr>
+						<th><?php _e('リダイレクトURI', 'photo-purchase'); ?></th>
+						<td><code><?php echo esc_url(home_url('/?pp_sns_callback=google')); ?></code></td>
+					</tr>
+				</table>
+
+				<hr>
+
+				<h3 class="title"><?php _e('LINE ログイン設定', 'photo-purchase'); ?></h3>
+				<table class="form-table">
+					<tr>
+						<th><label for="line_client_id"><?php _e('Channel ID', 'photo-purchase'); ?></label></th>
+						<td><input type="text" name="line_client_id" id="line_client_id" value="<?php echo esc_attr(get_option('photo_pp_line_client_id', '')); ?>" class="large-text"></td>
+					</tr>
+					<tr>
+						<th><label for="line_client_secret"><?php _e('Channel Secret', 'photo-purchase'); ?></label></th>
+						<td><input type="password" name="line_client_secret" id="line_client_secret" value="<?php echo esc_attr(get_option('photo_pp_line_client_secret', '')); ?>" class="large-text"></td>
+					</tr>
+					<tr>
+						<th><?php _e('リダイレクトURI', 'photo-purchase'); ?></th>
+						<td><code><?php echo esc_url(home_url('/?pp_sns_callback=line')); ?></code></td>
+					</tr>
+				</table>
 			<?php endif; ?>
 
 			<p class="submit">
@@ -1173,12 +1217,18 @@ function photo_purchase_activate()
 			'slug'  => 'order-inquiry',
 			'content' => '[ec_order_inquiry]',
 		),
-		'photo_customer_portal_page_id' => array(
-			'title' => 'マイページ（サブスク管理）',
-			'slug'  => 'customer-portal',
-			'content' => '[ec_customer_portal]',
+		'photo_my_page_id' => array(
+			'title' => 'マイページ',
+			'slug'  => 'my-page',
+			'content' => '[ec_member_dashboard]',
 		),
 	);
+
+	// 旧設定からの移行処理（名称変更に伴う対応）
+	$old_portal_id = get_option('photo_customer_portal_page_id');
+	if ($old_portal_id && !get_option('photo_my_page_id')) {
+		update_option('photo_my_page_id', $old_portal_id);
+	}
 
 	foreach ($pages as $option_key => $page_data) {
 		$page_id = get_option($option_key);
@@ -1211,13 +1261,13 @@ register_deactivation_hook(__FILE__, 'photo_purchase_deactivate');
 
 // Include required files
 require_once PHOTO_PURCHASE_PATH . 'includes/admin-meta.php';
-require_once PHOTO_PURCHASE_PATH . 'includes/admin-bulk-edit.php';
 require_once PHOTO_PURCHASE_PATH . 'includes/frontend-display.php';
 require_once PHOTO_PURCHASE_PATH . 'includes/payment-handler.php';
 require_once PHOTO_PURCHASE_PATH . 'includes/cart-system.php';
 require_once PHOTO_PURCHASE_PATH . 'includes/order-manager.php';
 require_once PHOTO_PURCHASE_PATH . 'includes/admin-log.php';
 require_once PHOTO_PURCHASE_PATH . 'includes/stripe-webhooks.php';
+require_once PHOTO_PURCHASE_PATH . 'includes/sns-handler.php';
 
 /**
  * Enqueue Frontend Assets

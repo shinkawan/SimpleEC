@@ -668,4 +668,114 @@ body.admin-bar .photo-cart-indicator {
 
 .ec-quickview-price-wrap .photo-price-anim-wrap {
 	justify-content: flex-start;
-}
+}
+
+/* --- SNS Login Buttons --- */
+.photo-sns-login-container {
+	margin: 30px 0;
+	text-align: center;
+	width: 100%;
+}
+
+.photo-sns-login-title {
+	display: flex;
+	align-items: center;
+	gap: 15px;
+	margin-bottom: 25px;
+	color: #94a3b8;
+	font-size: 0.85rem;
+	font-weight: 600;
+}
+
+.photo-sns-login-title::before,
+.photo-sns-login-title::after {
+	content: "";
+	flex: 1;
+	height: 1px;
+	background: #e2e8f0;
+}
+
+.photo-sns-buttons {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	align-items: center;
+}
+
+.photo-sns-button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 12px;
+	width: 100%;
+	max-width: 340px;
+	padding: 14px;
+	border-radius: var(--pp-radius);
+	text-decoration: none !important;
+	font-weight: 700;
+	font-size: 15px;
+	transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+	border: 1px solid transparent;
+	box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+	position: relative;
+	overflow: hidden;
+}
+
+.photo-sns-button:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 8px 15px rgba(0,0,0,0.1);
+}
+
+.photo-sns-button:active {
+	transform: translateY(0);
+}
+
+.photo-sns-google {
+	background: #fff;
+	border: 1px solid #e2e8f0;
+	color: #1e293b !important;
+}
+
+.photo-sns-google:hover {
+	background: #f8fafc;
+	border-color: #cbd5e1;
+}
+
+.photo-sns-line {
+	background: #06C755;
+	color: #fff !important;
+}
+
+.photo-sns-line:hover {
+	background: #05b34c;
+}
+
+.photo-sns-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+}
+
+.photo-sns-icon img {
+	width: 20px;
+	height: 20px;
+	object-fit: contain;
+}
+
+.photo-sns-text {
+	flex: 0 1 auto;
+}
+
+.photo-sns-button::after {
+	content: "";
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: linear-gradient(rgba(255,255,255,0.1), rgba(255,255,255,0));
+	pointer-events: none;
+}
+

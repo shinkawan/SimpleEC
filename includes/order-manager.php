@@ -218,9 +218,12 @@ function photo_purchase_save_order($order_token, &$order_data)
         }
     }
 
+    $user_id = is_user_logged_in() ? get_current_user_id() : 0;
+
     $result = $wpdb->insert(
         $table_name,
         array(
+            'user_id' => $user_id,
             'order_token' => $order_token,
             'buyer_name' => $order_data['buyer']['name'],
             'buyer_email' => $order_data['buyer']['email'],
@@ -233,10 +236,19 @@ function photo_purchase_save_order($order_token, &$order_data)
             'order_notes' => $order_data['notes'] ?? '',
             'created_at' => current_time('mysql'),
         ),
-        array('%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s')
+        array('%d', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s')
     );
 
     if ($result) {
+        // [New] Save shipping info to user meta for logged-in members
+        if ($user_id > 0) {
+            update_user_meta($user_id, 'billing_phone', $order_data['buyer']['phone']);
+            update_user_meta($user_id, 'billing_postcode', $order_data['shipping']['zip']);
+            update_user_meta($user_id, 'billing_state', $order_data['shipping']['pref']);
+            update_user_meta($user_id, 'billing_address_1', $order_data['shipping']['address']);
+            update_user_meta($user_id, 'billing_address_2', ''); // Clear billing_address_2 so billing_address_1 has the full info
+        }
+
         // Increment Coupon usage
         if ($coupon_info_data) {
             $wpdb->query($wpdb->prepare(
@@ -569,7 +581,13 @@ function photo_purchase_send_status_update_notification($order_id, $new_status)
         $message .= "ご注文いただいた定期購入商品の配送が開始されました。\n";
         $message .= "今後、定期的に商品をお届けいたします。\n\n";
         if (!empty($order->tracking_number)) {
-            $message .= "【お荷物伝票番号】\n" . $order->tracking_number . "\n\n";
+            $carrier_name = !empty($order->carrier) ? photo_purchase_get_carrier_label($order->carrier) : '';
+            $message .= "【お荷物伝票番号】\n" . $order->tracking_number . ($carrier_name ? " (" . $carrier_name . ")" : "") . "\n";
+            $track_url = !empty($order->carrier) ? photo_purchase_get_carrier_url($order->carrier, $order->tracking_number) : '';
+            if ($track_url) {
+                $message .= "【配送状況を確認する】\n" . $track_url . "\n";
+            }
+            $message .= "\n";
         }
         $message .= "商品の到着まで今しばらくお待ちください。\n";
     } elseif ($new_status === 'service_active') {
@@ -600,7 +618,13 @@ function photo_purchase_send_status_update_notification($order_id, $new_status)
         $message .= "ご注文いただいた商品の準備が整いました。\n\n";
 
         if (!empty($order->tracking_number)) {
-            $message .= "【お荷物伝票番号】\n" . $order->tracking_number . "\n\n";
+            $carrier_name = !empty($order->carrier) ? photo_purchase_get_carrier_label($order->carrier) : '';
+            $message .= "【お荷物伝票番号】\n" . $order->tracking_number . ($carrier_name ? " (" . $carrier_name . ")" : "") . "\n";
+            $track_url = !empty($order->carrier) ? photo_purchase_get_carrier_url($order->carrier, $order->tracking_number) : '';
+            if ($track_url) {
+                $message .= "【配送状況を確認する】\n" . $track_url . "\n";
+            }
+            $message .= "\n";
         }
 
         // Add download links if digital products exist
@@ -749,6 +773,7 @@ function photo_purchase_orders_page()
                 'buyer_email' => $buyer_email,
                 'status' => $status,
                 'tracking_number' => $tracking_number,
+                'carrier' => sanitize_text_field($_POST['carrier'] ?? ''),
                 'stripe_customer_id' => $stripe_customer_id,
                 'stripe_subscription_id' => $stripe_subscription_id,
                 'shipping_info' => json_encode($shipping_info),
@@ -1272,8 +1297,8 @@ function photo_purchase_orders_page()
                                             <p><strong>備考:</strong><br><?php echo nl2br(esc_html($order->order_notes)); ?></p>
                                         <?php endif; ?>
                                         <div style="margin-top: 20px;">
-                                            <a href="<?php echo wp_nonce_url(add_query_arg(array('photo_purchase_action' => 'print_doc', 'order_id' => $order->id, 'type' => 'print_invoice')), 'photo_print_doc'); ?>" class="button" target="_blank">📄 請求書印刷</a>
-                                            <a href="<?php echo wp_nonce_url(add_query_arg(array('photo_purchase_action' => 'print_doc', 'order_id' => $order->id, 'type' => 'print_delivery')), 'photo_print_doc'); ?>" class="button" target="_blank">🚚 納品書印刷</a>
+                                            <a href="<?php echo wp_nonce_url(add_query_arg(array('photo_purchase_action' => 'print_doc', 'order_id' => $order->id, 'type' => 'print_invoice', 'order_token' => $order->order_token)), 'photo_print_doc'); ?>" class="button" target="_blank">📄 請求書印刷</a>
+                                            <a href="<?php echo wp_nonce_url(add_query_arg(array('photo_purchase_action' => 'print_doc', 'order_id' => $order->id, 'type' => 'print_delivery', 'order_token' => $order->order_token)), 'photo_print_doc'); ?>" class="button" target="_blank">🚚 納品書印刷</a>
                                         </div>
                                     </div>
                                 </div>
@@ -1404,6 +1429,25 @@ function photo_purchase_order_edit_view($order_id)
                     </td>
                 </tr>
                 <tr>
+                    <th><label for="carrier">配送業者</label></th>
+                    <td>
+                        <select name="carrier" id="carrier">
+                            <option value="">-- 指定なし --</option>
+                            <option value="yamato" <?php selected($order->carrier, 'yamato'); ?>>ヤマト運輸</option>
+                            <option value="sagawa" <?php selected($order->carrier, 'sagawa'); ?>>佐川急便</option>
+                            <option value="japanpost" <?php selected($order->carrier, 'japanpost'); ?>>日本郵便 (ゆうパック等)</option>
+                            <option value="seino" <?php selected($order->carrier, 'seino'); ?>>西濃運輸</option>
+                            <option value="other" <?php selected($order->carrier, 'other'); ?>>その他</option>
+                        </select>
+                        <?php if ($order->tracking_number && !empty($order->carrier)): 
+                            $url = photo_purchase_get_carrier_url($order->carrier, $order->tracking_number);
+                            if ($url): ?>
+                                <a href="<?php echo esc_url($url); ?>" target="_blank" style="margin-left: 10px; text-decoration: none;">🔍 追跡ページを開く</a>
+                            <?php endif; ?>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <tr>
                     <th><label for="stripe_customer_id">Stripe 顧客ID</label></th>
                     <td>
                         <input type="text" name="stripe_customer_id" id="stripe_customer_id"
@@ -1415,8 +1459,8 @@ function photo_purchase_order_edit_view($order_id)
                 <tr>
                     <th><label>帳票出力</label></th>
                     <td>
-                        <a href="<?php echo esc_url(add_query_arg(array('photo_purchase_action' => 'print_doc', 'order_id' => $order->id, 'type' => 'print_invoice'), home_url('/'))); ?>" class="button" target="_blank">納品書（請求書）を表示</a>
-                        <a href="<?php echo esc_url(add_query_arg(array('photo_purchase_action' => 'print_doc', 'order_id' => $order->id, 'type' => 'print_receipt'), home_url('/'))); ?>" class="button" target="_blank">領収書を表示</a>
+                        <a href="<?php echo esc_url(add_query_arg(array('photo_purchase_action' => 'print_doc', 'order_id' => $order->id, 'type' => 'print_invoice', 'order_token' => $order->order_token), home_url('/'))); ?>" class="button" target="_blank">納品書（請求書）を表示</a>
+                        <a href="<?php echo esc_url(add_query_arg(array('photo_purchase_action' => 'print_doc', 'order_id' => $order->id, 'type' => 'print_receipt', 'order_token' => $order->order_token), home_url('/'))); ?>" class="button" target="_blank">領収書を表示</a>
                         <p class="description">別ウィンドウで開き、ブラウザの印刷機能（Ctrl+P）でPDF保存や印刷が可能です。</p>
                     </td>
                 </tr>
@@ -1545,14 +1589,22 @@ function photo_purchase_order_edit_view($order_id)
 /**
  * Order Print View (Strict HTML for PDF/Print)
  */
-function photo_purchase_order_print_view($order_id, $type)
+function photo_purchase_order_print_view($order_id, $type, $order_token = '')
 {
     global $wpdb;
     $table_name = $wpdb->prefix . 'photo_orders';
     $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $order_id));
 
-    if (!$order)
+    if (!$order) {
         wp_die('Order not found.');
+    }
+
+    // Security check: If not admin, token must match
+    if (!current_user_can('manage_options')) {
+        if (empty($order_token) || !hash_equals($order->order_token, $order_token)) {
+            wp_die('Invalid access token.');
+        }
+    }
 
     $items = json_decode($order->order_items, true);
     $shipping = json_decode($order->shipping_info, true);
@@ -1946,7 +1998,10 @@ function photo_purchase_handle_print_actions()
             if (!isset($_GET['_wpnonce']) || !wp_verify_nonce($_GET['_wpnonce'], 'photo_print_order')) {
                 wp_die(__('セキュリティエラー：リンクの期限が切れています。受注一覧からやり直してください。', 'photo-purchase'));
             }
-            photo_purchase_order_print_view(intval($_GET['order_id']), $_GET['action']);
+            $order_id = intval($_GET['order_id']);
+            global $wpdb;
+            $order_token = $wpdb->get_var($wpdb->prepare("SELECT order_token FROM {$wpdb->prefix}photo_orders WHERE id = %d", $order_id));
+            photo_purchase_order_print_view($order_id, $_GET['action'], $order_token);
         }
         if ($_GET['action'] === 'export_csv') {
             if (!isset($_GET['_wpnonce']) || !wp_verify_nonce($_GET['_wpnonce'], 'photo_export_csv')) {
@@ -2116,7 +2171,7 @@ function photo_purchase_export_orders_csv()
         fputcsv($output, array(
             $order->id,
             $order->order_token,
-            get_option('photo_pp_invoice_number', ''),
+            get_option('photo_pp_tokusho_registration_number', ''),
             $order->buyer_name,
             $order->buyer_email,
             implode(' / ', $item_details),
@@ -2684,7 +2739,19 @@ function photo_purchase_order_inquiry_shortcode()
                     <?php if (!empty($order->tracking_number)): ?>
                         <tr style="border-bottom:1px solid #eee;">
                             <th style="text-align:left; padding:10px 0; color:#888;">送り状番号</th>
-                            <td style="padding:10px 0; font-weight:bold;"><?php echo esc_html($order->tracking_number); ?></td>
+                            <td style="padding:10px 0; font-weight:bold;">
+                                <?php echo esc_html($order->tracking_number); ?>
+                                <?php 
+                                $carrier_name = !empty($order->carrier) ? photo_purchase_get_carrier_label($order->carrier) : '';
+                                if ($carrier_name) echo ' (' . esc_html($carrier_name) . ')';
+                                
+                                $track_url = !empty($order->carrier) ? photo_purchase_get_carrier_url($order->carrier, $order->tracking_number) : '';
+                                if ($track_url): ?>
+                                    <div style="margin-top:5px;">
+                                        <a href="<?php echo esc_url($track_url); ?>" target="_blank" style="font-size:13px; color:var(--pp-primary); text-decoration:none;">🔍 配送状況を確認する</a>
+                                    </div>
+                                <?php endif; ?>
+                            </td>
                         </tr>
                     <?php endif; ?>
                 </table>
@@ -2747,11 +2814,11 @@ function photo_purchase_order_inquiry_shortcode()
                 <div style="margin-top:32px; padding-top:20px; border-top:1px solid #eee; display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
                     <a href="<?php echo esc_url(get_permalink()); ?>" style="color:#666; font-size:13px; text-decoration:none;">← 別の注文を照会する</a>
                     <div style="flex:1;"></div>
-                    <a href="<?php echo esc_url(add_query_arg(array('photo_purchase_action' => 'print_doc', 'order_id' => $order->id, 'type' => 'print_invoice'), home_url('/'))); ?>" target="_blank" style="display:inline-block; padding:10px 20px; background:#f8f9fa; border:1px solid #dee2e6; border-radius:8px; text-decoration:none; color:#495057; font-weight:bold; font-size:14px;">
+                    <a href="<?php echo esc_url(add_query_arg(array('photo_purchase_action' => 'print_doc', 'order_id' => $order->id, 'type' => 'print_invoice', 'order_token' => $order->order_token), home_url('/'))); ?>" target="_blank" style="display:inline-block; padding:10px 20px; background:#f8f9fa; border:1px solid #dee2e6; border-radius:8px; text-decoration:none; color:#495057; font-weight:bold; font-size:14px;">
                         📄 納品書（請求書）
                     </a>
                     <?php if ($order->status !== 'pending_payment' && $order->status !== 'cancelled'): ?>
-                        <a href="<?php echo esc_url(add_query_arg(array('photo_purchase_action' => 'print_doc', 'order_id' => $order->id, 'type' => 'print_receipt'), home_url('/'))); ?>" target="_blank" style="display:inline-block; padding:10px 20px; background:#f8f9fa; border:1px solid #dee2e6; border-radius:8px; text-decoration:none; color:#495057; font-weight:bold; font-size:14px;">
+                        <a href="<?php echo esc_url(add_query_arg(array('photo_purchase_action' => 'print_doc', 'order_id' => $order->id, 'type' => 'print_receipt', 'order_token' => $order->order_token), home_url('/'))); ?>" target="_blank" style="display:inline-block; padding:10px 20px; background:#f8f9fa; border:1px solid #dee2e6; border-radius:8px; text-decoration:none; color:#495057; font-weight:bold; font-size:14px;">
                             💰 領収書を発行
                         </a>
                     <?php endif; ?>
@@ -2880,6 +2947,10 @@ add_action('template_redirect', 'photo_purchase_handle_auth_logout');
  * Verify Session and Get Current User Email
  */
 function photo_purchase_get_auth_email() {
+    if (is_user_logged_in()) {
+        return wp_get_current_user()->user_email;
+    }
+    
     $token = $_COOKIE['photo_pp_auth_token'] ?? '';
     if (!$token) return false;
 
@@ -2888,17 +2959,51 @@ function photo_purchase_get_auth_email() {
 }
 
 /**
- * Shortcode: Customer Portal [ec_customer_portal] (Enhanced with Auth Login)
+ * Handle Member Profile Update
  */
-function photo_purchase_customer_portal_shortcode($atts)
+function photo_purchase_handle_profile_update() {
+    if (!isset($_POST['profile_nonce']) || !wp_verify_nonce($_POST['profile_nonce'], 'photo_purchase_update_profile')) {
+        wp_die('セキュリティエラーが発生しました。');
+    }
+    if (!is_user_logged_in()) {
+        wp_die('ログインが必要です。');
+    }
+
+    $user_id = get_current_user_id();
+    
+    // Update Display Name
+    if (!empty($_POST['display_name'])) {
+        wp_update_user(array(
+            'ID'           => $user_id,
+            'display_name' => sanitize_text_field($_POST['display_name'])
+        ));
+    }
+
+    update_user_meta($user_id, 'billing_phone', sanitize_text_field($_POST['billing_phone']));
+    update_user_meta($user_id, 'billing_postcode', sanitize_text_field($_POST['billing_postcode']));
+    update_user_meta($user_id, 'billing_state', sanitize_text_field($_POST['billing_state']));
+    update_user_meta($user_id, 'billing_address_1', sanitize_text_field($_POST['billing_address_1']));
+    update_user_meta($user_id, 'billing_address_2', ''); // Keep simple
+
+    wp_safe_redirect(add_query_arg('profile_updated', '1', wp_get_referer()));
+    exit;
+}
+add_action('admin_post_photo_purchase_update_profile', 'photo_purchase_handle_profile_update');
+
+/**
+ * 統合版マイページ: 履歴確認およびサブスクリプション管理機能を提供。
+ * WordPressログインユーザーと、メール認証によるゲスト購入者の両方に対応。
+ * リッチな UI、サブスクリプション管理、詳細な注文履歴を提供。
+ */
+function photo_purchase_member_dashboard_shortcode($atts)
 {
-    // Start session if not started
+    // セッション開始
     if (!session_id()) session_start();
 
     $auth_email = photo_purchase_get_auth_email();
     $auth_error = '';
 
-    // Handle Auth Actions
+    // 認証アクションの処理 (ゲスト用)
     if (isset($_POST['pp_auth_email'])) {
         $res = photo_purchase_handle_auth_request();
         if ($res !== true) $auth_error = $res;
@@ -2909,65 +3014,113 @@ function photo_purchase_customer_portal_shortcode($atts)
 
     ob_start();
     ?>
-    <div class="photo-purchase-portal" style="max-width:800px; margin:0 auto; font-family:sans-serif;">
+    <div class="photo-purchase-portal" style="max-width:850px; margin:0 auto; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;">
 
     <?php if (!$auth_email): ?>
-        <!-- Login Form -->
-        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:16px; padding:40px; text-align:center;">
-            <h2 style="margin-top:0; color:#1e293b;">📦 マイページログイン</h2>
+        <!-- ログインフォーム -->
+        <div style="background:#fcfcfd; border:1px solid #e2e8f0; border-radius:24px; padding:60px 40px; text-align:center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05);">
+            <div style="background:#eef2ff; width:64px; height:64px; border-radius:20px; display:flex; align-items:center; justify-content:center; margin:0 auto 24px;">
+                <svg viewBox="0 0 24 24" width="32" height="32" stroke="#4f46e5" stroke-width="2" fill="none"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+            </div>
+            <h2 style="margin:0 0 12px; color:#1e293b; font-size:28px; font-weight:800;">マイページログイン</h2>
+            <p style="color:#64748b; margin-bottom:32px; font-size:16px;">ご注文履歴の確認、サブスクリプションの管理が可能です。</p>
             
             <?php if ($auth_error): ?>
-                <div style="background:#fef2f2; border-left:4px solid #ef4444; padding:12px; margin-bottom:20px; color:#b91c1c; text-align:left;">
+                <div style="background:#fff1f2; border:1px solid #fda4af; border-radius:12px; padding:16px; margin-bottom:24px; color:#9f1239; text-align:left; font-size:14px; display:flex; gap:12px; align-items:center;">
+                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     <?php echo esc_html($auth_error); ?>
                 </div>
             <?php endif; ?>
 
             <?php if (isset($_SESSION['pp_auth_pending_email'])): ?>
-                <!-- Step 2: Code Verification -->
-                <p style="color:#64748b; margin-bottom:24px;">
-                    <strong><?php echo esc_html($_SESSION['pp_auth_pending_email']); ?></strong> 宛てに認証コードを送信しました。<br>
-                    メールを確認し、6桁のコードを入力してください。
-                </p>
-                <form method="post" style="display:flex; flex-direction:column; gap:16px; align-items:center;">
-                    <?php wp_nonce_field('pp_auth_verify', 'pp_auth_nonce_verify'); ?>
-                    <input type="text" name="pp_auth_code" placeholder="000000" required maxlength="6"
-                           style="padding:15px; border-radius:10px; border:2px solid #cbd5e1; width:100%; max-width:200px; text-align:center; font-size:24px; letter-spacing:8px; font-weight:bold;">
-                    <button type="submit" class="button" style="background:#4f46e5; color:#fff; padding:12px 40px; border:none; border-radius:10px; cursor:pointer; font-weight:bold; width:100%; max-width:200px;">
-                        ログイン
-                    </button>
-                    <a href="<?php echo add_query_arg('reset_auth', '1'); ?>" style="color:#6366f1; font-size:14px; text-decoration:none;">別のメールアドレスを使う</a>
-                </form>
+                <!-- ステップ 2: 認証コードの確認 -->
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:16px; padding:24px; margin-bottom:24px;">
+                    <p style="color:#475569; margin:0 0 16px; font-size:15px;">
+                        <strong><?php echo esc_html($_SESSION['pp_auth_pending_email']); ?></strong> 宛てに送信された<br>6桁のコードを入力してください。
+                    </p>
+                    <form method="post">
+                        <?php wp_nonce_field('pp_auth_verify', 'pp_auth_nonce_verify'); ?>
+                        <div style="margin-bottom:20px;">
+                            <input type="text" name="pp_auth_code" placeholder="000000" required maxlength="6"
+                                   style="padding:15px; border-radius:12px; border:2px solid #cbd5e1; width:100%; max-width:240px; text-align:center; font-size:32px; letter-spacing:10px; font-weight:800; color:#1e293b; outline:none; transition:border-color 0.2s;">
+                        </div>
+                        <button type="submit" style="background:#4f46e5; color:#fff; padding:16px 48px; border:none; border-radius:14px; cursor:pointer; font-weight:bold; font-size:16px; width:100%; max-width:240px; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.4);">
+                            ログインする
+                        </button>
+                    </form>
+                    <div style="margin-top:20px;">
+                        <a href="<?php echo add_query_arg('reset_auth', '1'); ?>" style="color:#6366f1; font-size:14px; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
+                            メールアドレスを修正する
+                        </a>
+                    </div>
+                </div>
                 <?php if (isset($_GET['reset_auth'])) { unset($_SESSION['pp_auth_pending_email']); wp_safe_redirect(get_permalink()); exit; } ?>
             <?php else: ?>
-                <!-- Step 1: Email Input -->
-                <p style="color:#64748b; margin-bottom:24px;">ご注文時のメールアドレスを入力してください。<br>ログイン用の認証コードをお送りします。</p>
-                <form method="post" style="display:flex; flex-direction:column; gap:16px; align-items:center;">
+                <!-- ステップ 1: メールアドレス入力 -->
+                <form method="post" style="max-width:440px; margin:0 auto;">
                     <?php wp_nonce_field('pp_auth_request', 'pp_auth_nonce'); ?>
-                    <input type="email" name="pp_auth_email" placeholder="example@mail.com" required
-                           style="padding:15px; border-radius:10px; border:2px solid #cbd5e1; width:100%; max-width:400px; font-size:16px;">
-                    <button type="submit" class="button" style="background:#4f46e5; color:#fff; padding:12px 40px; border:none; border-radius:10px; cursor:pointer; font-weight:bold; width:100%; max-width:400px;">
-                        認証コードを送信
+                    <div style="margin-bottom:16px; text-align:left;">
+                        <label style="display:block; font-size:14px; font-weight:600; color:#475569; margin-bottom:8px;">メールアドレス</label>
+                        <input type="email" name="pp_auth_email" placeholder="注文時のメールアドレスを入力" required
+                               style="padding:14px 18px; border-radius:12px; border:2px solid #e2e8f0; width:100%; font-size:16px; outline:none; transition:border-color 0.2s;">
+                    </div>
+                    <button type="submit" style="background:#4f46e5; color:#fff; padding:16px 32px; border:none; border-radius:12px; cursor:pointer; font-weight:bold; font-size:16px; width:100%; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);">
+                        認証コードを受け取る
                     </button>
                 </form>
+                <?php 
+                // Show SNS buttons if configured OR if user is admin (for preview)
+                $sns_config = photo_purchase_get_sns_config();
+                $has_sns_setup = !empty($sns_config['google']['client_id']) || !empty($sns_config['line']['client_id']);
+                
+                if ($has_sns_setup || current_user_can('manage_options')): ?>
+                    <div style="margin-top:32px; padding-top:24px; border-top:1px solid #f1f5f9;">
+                        <!-- SNS Login Buttons -->
+                        <?php echo photo_purchase_render_sns_login_buttons(); ?>
+                    </div>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
 
     <?php else: ?>
-        <!-- Logged In: Dashboard -->
-        <div style="margin-bottom:30px; display:flex; justify-content:space-between; align-items:center; background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0;">
-            <div>
-                <span style="color:#64748b; font-size:14px;">ログイン中:</span><br>
-                <strong style="font-size:18px; color:#1e293b;"><?php echo esc_html($auth_email); ?></strong>
+        <!-- ログイン済み: ダッシュボード表示 -->
+        <header style="margin-bottom:32px; display:flex; justify-content:space-between; align-items:center; background:#fff; padding:24px; border-radius:20px; border:1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02);">
+            <div style="display:flex; align-items:center; gap:16px;">
+                <div style="background:#f1f5f9; width:48px; height:48px; border-radius:12px; display:flex; align-items:center; justify-content:center; color:#64748b;">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </div>
+                <div>
+                    <span style="color:#94a3b8; font-size:12px; font-weight:bold; text-transform:uppercase; letter-spacing:0.05em;"><?php echo is_user_logged_in() ? 'WP Account' : 'Guest Auth'; ?></span><br>
+                    <strong style="font-size:18px; color:#1e293b;"><?php echo esc_html($auth_email); ?></strong>
+                </div>
             </div>
-            <a href="<?php echo add_query_arg('pp_logout', '1'); ?>" style="color:#ef4444; font-size:14px; text-decoration:none; border:1px solid #fee2e2; padding:8px 16px; border-radius:8px; background:#fef2f2;">ログアウト</a>
-        </div>
+            <?php if (!is_user_logged_in()): ?>
+                <a href="<?php echo add_query_arg('pp_logout', '1'); ?>" style="color:#ef4444; font-size:14px; font-weight:bold; text-decoration:none; background:#fff1f2; padding:10px 20px; border-radius:10px; border:1px solid #fee2e2; transition:all 0.2s;">ログアウト</a>
+            <?php else: ?>
+                <a href="<?php echo wp_logout_url(get_permalink()); ?>" style="color:#64748b; font-size:14px; font-weight:bold; text-decoration:none; background:#f8fafc; padding:10px 20px; border-radius:10px; border:1px solid #e2e8f0;">ログアウト</a>
+            <?php endif; ?>
+        </header>
 
         <?php
         global $wpdb;
         $table_name = $wpdb->prefix . 'photo_orders';
-        $orders = $wpdb->get_results($wpdb->prepare("SELECT * FROM $table_name WHERE buyer_email = %s ORDER BY created_at DESC", $auth_email));
         
-        // Subscription check across all orders
+        // 注文データの取得 (email または user_id)
+        if (is_user_logged_in()) {
+            $user_id = get_current_user_id();
+            $orders = $wpdb->get_results($wpdb->prepare(
+                "SELECT * FROM $table_name WHERE user_id = %d OR buyer_email = %s ORDER BY created_at DESC", 
+                $user_id, $auth_email
+            ));
+        } else {
+            $orders = $wpdb->get_results($wpdb->prepare(
+                "SELECT * FROM $table_name WHERE buyer_email = %s ORDER BY created_at DESC", 
+                $auth_email
+            ));
+        }
+        
+        // サブスクリプション管理用の顧客ID取得
         $subscription_customer_id = '';
         foreach ($orders as $o) {
             if (!empty($o->stripe_customer_id)) {
@@ -2978,173 +3131,309 @@ function photo_purchase_customer_portal_shortcode($atts)
         ?>
 
         <?php if ($subscription_customer_id): ?>
-            <!-- Stripe Portal Link -->
-            <div style="background:linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); border-radius:16px; padding:32px; color:#fff; text-align:center; margin-bottom:40px; box-shadow:0 10px 15px -3px rgba(79, 70, 229, 0.2);">
-                <h3 style="margin:0 0 12px 0; color:#fff; display:flex; align-items:center; justify-content:center; gap:10px;">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-                    プラン管理・支払い方法の変更
-                </h3>
-                <p style="margin:0 0 24px 0; color:#e0e7ff; font-size:15px;">解約の手続きや、登録済みクレジットカードの更新はこちらから行えます。</p>
-                <?php 
-                $portal_url = function_exists('photo_purchase_create_portal_session') ? photo_purchase_create_portal_session($subscription_customer_id) : false;
-                if ($portal_url): ?>
-                    <a href="<?php echo esc_url($portal_url); ?>" target="_blank"
-                       style="display:inline-block; background:#fff; color:#4f46e5; text-decoration:none; padding:14px 40px; border-radius:12px; font-weight:bold; font-size:16px; transition:transform 0.2s;">
-                        Stripeカスタマーポータルを開く
-                    </a>
-                <?php else: ?>
-                    <p style="color:#fecaca;">ポータルへの接続に失敗しました。管理者へお問い合わせください。</p>
-                <?php endif; ?>
+            <!-- Stripe ポータル連携 -->
+            <div style="background: linear-gradient(135deg, #1e293b 0%, #334155 100%); border-radius:24px; padding:40px; color:#fff; text-align:center; margin-bottom:48px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); position:relative; overflow:hidden;">
+                <div style="position:relative; z-index:1;">
+                    <h3 style="margin:0 0 16px; color:#fff; display:flex; align-items:center; justify-content:center; gap:12px; font-size:20px; font-weight:700;">
+                        <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                        定期プラン・お支払い方法の管理
+                    </h3>
+                    <p style="margin:0 0 32px; color:#94a3b8; font-size:15px; max-width:480px; margin-left:auto; margin-right:auto;">登録済みカードの更新、お支払い履歴の確認、解約手続きなどはStripeポータルから安全に行えます。</p>
+                    <?php 
+                    $portal_url = function_exists('photo_purchase_create_portal_session') ? photo_purchase_create_portal_session($subscription_customer_id) : false;
+                    if ($portal_url): ?>
+                        <a href="<?php echo esc_url($portal_url); ?>" target="_blank"
+                           style="display:inline-block; background:#fff; color:#1e293b; text-decoration:none; padding:16px 40px; border-radius:14px; font-weight:800; font-size:16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2);">
+                            管理ポータルを開く
+                        </a>
+                    <?php endif; ?>
+                </div>
+                <div style="position:absolute; bottom:-20px; right:-20px; opacity:0.1; transform: rotate(-15deg);">
+                    <svg viewBox="0 0 24 24" width="200" height="200" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1.41 16.09V20h-2.67v-1.93c-1.71-.36-3.16-1.46-3.27-3.4h1.96c.1 1.05.82 1.87 2.65 1.87 1.96 0 2.4-.98 2.4-1.59 0-.83-.44-1.61-2.67-2.14-2.48-.6-4.18-1.62-4.18-3.97 0-1.92 1.41-3.26 3.11-3.66V3.36h2.67v2c1.3.15 2.5 1.02 2.67 2.84h-2c-.08-1-1-1.29-1.95-1.29-1.11 0-2.31.42-2.31 1.51 0 .91.82 1.4 2.13 1.76 2.48.69 4.74 1.57 4.74 4.3 0 2.22-1.43 3.65-3.32 4.11z"/></svg>
+                </div>
             </div>
         <?php endif; ?>
 
-        <!-- Order History -->
-        <h3 style="display:flex; align-items:center; gap:10px; color:#1e293b; margin-bottom:20px;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
-            注文履歴の一覧
+        <!-- [New] Profile / Shipping Settings Section -->
+        <?php if (is_user_logged_in()): 
+            $current_user = wp_get_current_user();
+            $u_phone = get_user_meta($current_user->ID, 'billing_phone', true);
+            $u_zip = get_user_meta($current_user->ID, 'billing_postcode', true);
+            $u_pref = get_user_meta($current_user->ID, 'billing_state', true);
+            $u_addr = get_user_meta($current_user->ID, 'billing_address_1', true);
+        ?>
+        <div style="background:#fff; border:1px solid #e2e8f0; border-radius:20px; padding:32px; margin-bottom:48px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02);">
+            <h3 style="margin:0 0 24px; color:#1e293b; font-size:20px; font-weight:800; display:flex; align-items:center; gap:12px;">
+                <svg viewBox="0 0 24 24" width="24" height="24" stroke="#4f46e5" stroke-width="2" fill="none"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                会員情報・配送先設定
+            </h3>
+            <form action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post">
+                <input type="hidden" name="action" value="photo_purchase_update_profile">
+                <?php wp_nonce_field('photo_purchase_update_profile', 'profile_nonce'); ?>
+                
+                <div style="margin-bottom:20px;">
+                    <label style="display:block; font-size:13px; font-weight:600; color:#64748b; margin-bottom:8px;">お名前</label>
+                    <input type="text" name="display_name" value="<?php echo esc_attr($current_user->display_name); ?>" required style="width:100%; padding:12px; border-radius:10px; border:1px solid #e2e8f0;">
+                </div>
+
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:20px; margin-bottom:20px;">
+                    <div>
+                        <label style="display:block; font-size:13px; font-weight:600; color:#64748b; margin-bottom:8px;">電話番号</label>
+                        <input type="tel" name="billing_phone" value="<?php echo esc_attr($u_phone); ?>" style="width:100%; padding:12px; border-radius:10px; border:1px solid #e2e8f0;">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:13px; font-weight:600; color:#64748b; margin-bottom:8px;">郵便番号</label>
+                        <input type="text" name="billing_postcode" value="<?php echo esc_attr($u_zip); ?>" placeholder="123-4567" style="width:100%; padding:12px; border-radius:10px; border:1px solid #e2e8f0;">
+                    </div>
+                </div>
+                <div style="margin-bottom:20px;">
+                    <label style="display:block; font-size:13px; font-weight:600; color:#64748b; margin-bottom:8px;">都道府県</label>
+                    <select name="billing_state" style="width:100%; padding:12px; border-radius:10px; border:1px solid #e2e8f0;">
+                        <option value="">-- 選択してください --</option>
+                        <?php
+                        $prefectures = ["北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県", "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県", "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県", "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県", "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"];
+                        foreach ($prefectures as $p) {
+                            echo '<option value="' . esc_attr($p) . '" ' . selected($u_pref, $p, false) . '>' . esc_html($p) . '</option>';
+                        }
+                        ?>
+                    </select>
+                </div>
+                <div style="margin-bottom:24px;">
+                    <label style="display:block; font-size:13px; font-weight:600; color:#64748b; margin-bottom:8px;">市区町村・番地・建物名</label>
+                    <textarea name="billing_address_1" rows="2" style="width:100%; padding:12px; border-radius:10px; border:1px solid #e2e8f0;"><?php echo esc_textarea($u_addr); ?></textarea>
+                </div>
+                
+                <button type="submit" style="background:#4f46e5; color:#fff; border:none; padding:12px 32px; border-radius:10px; font-weight:700; cursor:pointer; font-size:14px; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);">
+                    情報を更新する
+                </button>
+                
+                <?php if (isset($_GET['profile_updated'])): ?>
+                    <span style="margin-left:16px; color:#10b981; font-size:14px; font-weight:600;">✓ 保存しました</span>
+                <?php endif; ?>
+            </form>
+        </div>
+        <?php endif; ?>
+
+        <!-- 注文履歴一覧 -->
+        <h3 style="display:flex; align-items:center; gap:12px; color:#1e293b; margin-bottom:24px; font-size:22px; font-weight:800;">
+            <div style="background:#eef2ff; width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#4f46e5;">
+                <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            </div>
+            購入履歴
         </h3>
 
         <?php if ($orders): ?>
-            <div style="display:flex; flex-direction:column; gap:16px;">
+            <div style="display:flex; flex-direction:column; gap:20px;">
                 <?php foreach ($orders as $order): 
                     $items_data = json_decode($order->order_items, true) ?: array();
                     $status_info = array(
                         'pending_payment' => array('label' => '入金待ち', 'color' => '#f59e0b', 'bg' => '#fef3c7'),
-                        'processing'      => array('label' => '完了', 'color' => '#10b981', 'bg' => '#ecfdf5'),
-                        'completed'       => array('label' => '発送済み', 'color' => '#3b82f6', 'bg' => '#eff6ff'),
-                        'service_active'  => array('label' => 'サービス中 / 継続中', 'color' => '#7c3aed', 'bg' => '#f5f3ff'),
-                        'sub_shipping'    => array('label' => '配送開始 / 継続中', 'color' => '#4f46e5', 'bg' => '#eef2ff'),
+                        'processing'      => array('label' => '準備中', 'color' => '#10b981', 'bg' => '#ecfdf5'),
+                        'completed'       => array('label' => '発送済み / 完了', 'color' => '#3b82f6', 'bg' => '#eff6ff'),
+                        'active'          => array('label' => 'サービス提供中', 'color' => '#7c3aed', 'bg' => '#f5f3ff'),
                         'cancelled'       => array('label' => 'キャンセル', 'color' => '#ef4444', 'bg' => '#fef2f2'),
                     );
                     $current_status = $status_info[$order->status] ?? array('label' => $order->status, 'color' => '#64748b', 'bg' => '#f1f5f9');
                     
+                    // サブスク判定
                     $is_sub_order = !empty($order->stripe_subscription_id);
-                    $has_shippable = false;
-                    foreach ($items_data as $it) {
-                        if ($it['format'] !== 'digital') {
-                            if ($it['format'] === 'subscription') {
-                                if (get_post_meta($it['id'], '_photo_sub_requires_shipping', true) === '1') $has_shippable = true;
-                            } else {
-                                $has_shippable = true;
-                            }
-                        }
-                    }
-
-                    // Specific labels for service-based subscriptions
-                    if ($order->status === 'processing') {
-                        if (!$has_shippable) {
-                            $current_status['label'] = 'サービス有効 / 完了';
-                        } else {
-                            $current_status['label'] = '決済完了 / 発送準備中';
-                        }
-                    } elseif ($order->status === 'completed' && $is_sub_order && $has_shippable) {
-                        $current_status['label'] = '配送開始 / 継続中';
+                    if ($is_sub_order && $order->status === 'completed') {
+                        $current_status['label'] = '継続中';
                     }
                 ?>
-                    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:20px; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid #f1f5f9;">
-                            <div style="font-family:monospace; font-size:15px; font-weight:bold; color:#1e293b;">
-                                <?php echo esc_html($order->order_token); ?>
+                    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:20px; padding:28px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02); transition: transform 0.2s;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
+                            <div>
+                                <div style="font-family: 'JetBrains Mono', 'Courier New', monospace; font-size:16px; font-weight:bold; color:#1e293b; margin-bottom:4px; display:flex; align-items:center; gap:8px;">
+                                    <?php echo esc_html($order->order_token); ?>
+                                    <span style="font-size:12px; font-weight:normal; background:#f1f5f9; color:#94a3b8; padding:2px 8px; border-radius:6px; font-family:sans-serif;">ID: #<?php echo $order->id; ?></span>
+                                </div>
+                                <div style="font-size:13px; color:#94a3b8; display:flex; align-items:center; gap:8px;">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                    <?php echo date('Y/m/d H:i', strtotime($order->created_at)); ?>
+                                </div>
                             </div>
-                            <div style="background:<?php echo $current_status['bg']; ?>; color:<?php echo $current_status['color']; ?>; padding:4px 12px; border-radius:30px; font-size:12px; font-weight:bold;">
-                                <?php echo esc_html($current_status['label']); ?>
+                            <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+                                <div style="background:<?php echo $current_status['bg']; ?>; color:<?php echo $current_status['color']; ?>; padding:6px 16px; border-radius:100px; font-size:13px; font-weight:800; border: 1px solid rgba(0,0,0,0.05);">
+                                    <?php echo esc_html($current_status['label']); ?>
+                                </div>
                             </div>
                         </div>
-                        <div style="font-size:13px; color:#64748b; margin-bottom:10px;">
-                            <?php echo date('Y/m/d H:i', strtotime($order->created_at)); ?> | 
-                            <?php echo number_format($order->total_amount); ?> 円
-                            <?php 
-                                if (!empty($order->coupon_info)) {
+
+                        <div style="background:#f1f5f9; border-radius:14px; padding:16px; margin-bottom:20px;">
+                            <div style="display:flex; flex-wrap:wrap; gap:20px; margin-bottom:12px;">
+                                <div style="flex:1; min-width:120px;">
+                                    <label style="display:block; font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; margin-bottom:4px;">合計金額</label>
+                                    <span style="font-size:18px; font-weight:800; color:#1e293b;"><?php echo number_format($order->total_amount); ?> <small style="font-weight:600; font-size:13px; color:#64748b;">円</small></span>
+                                </div>
+                                <div style="flex:1; min-width:120px;">
+                                    <label style="display:block; font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; margin-bottom:4px;">お支払い方法</label>
+                                    <span style="font-size:15px; font-weight:600; color:#475569;">
+                                        <?php 
+                                            $methods = array('stripe' => 'クレジットカード', 'cod' => '代金引換', 'bank_transfer' => '銀行振込', 'paypay' => 'PayPay');
+                                            echo $methods[$order->payment_method] ?? $order->payment_method;
+                                        ?>
+                                    </span>
+                                </div>
+                                <?php if (!empty($order->coupon_info)): 
                                     $coupon_data = json_decode($order->coupon_info, true);
-                                    if ($coupon_data && !empty($coupon_data['code'])) {
-                                        $dur_lbl = '';
-                                        if (isset($coupon_data['stripe_duration'])) {
-                                            $dur_lbl = ($coupon_data['stripe_duration'] === 'forever') ? ' (永続)' : (($coupon_data['stripe_duration'] === 'repeating') ? ' (' . ($coupon_data['stripe_months'] ?? 0) . 'ヶ月)' : ' (初回のみ)');
-                                        }
-                                        echo ' | <span style="color:#e11d48; font-weight:bold;">割引(-' . number_format($coupon_data['applied_discount']) . '円' . $dur_lbl . ')</span>';
+                                    if ($coupon_data && !empty($coupon_data['code'])): ?>
+                                    <div style="flex:1; min-width:120px;">
+                                        <label style="display:block; font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; margin-bottom:4px;">適用クーポン</label>
+                                        <span style="font-size:13px; font-weight:700; color:#be123c;">
+                                            <?php echo esc_html($coupon_data['code']); ?> (-<?php echo number_format($coupon_data['applied_discount'] ?? 0); ?>円)
+                                        </span>
+                                    </div>
+                                <?php endif; endif; ?>
+                            </div>
+                            
+                            <!-- Tax Breakdown -->
+                            <div style="border-top: 1px dashed #cbd5e1; pt:10px; mt:10px; font-size:12px; color:#64748b;">
+                                <?php
+                                    $shipping_info = json_decode($order->shipping_info, true);
+                                    $s_fee = intval($shipping_info['fee'] ?? 0);
+                                    $c_fee = intval($shipping_info['cod_fee'] ?? 0);
+                                    $coupon_disc = 0;
+                                    if (!empty($order->coupon_info)) {
+                                        $c_data = json_decode($order->coupon_info, true);
+                                        $coupon_disc = intval($c_data['applied_discount'] ?? 0);
                                     }
-                                }
-                            ?>
-                             | 
-                            <?php 
-                                $methods = array('stripe' => 'カード', 'cod' => '代引き', 'bank_transfer' => '銀行振込', 'paypay' => 'PayPay');
-                                echo $methods[$order->payment_method] ?? $order->payment_method;
-                            ?>
+                                    $tax_res = photo_purchase_get_tax_breakdown($items_data, $s_fee, $c_fee, $coupon_disc);
+                                    foreach ($tax_res as $rate => $tax_data) {
+                                        if ($tax_data['target'] > 0) {
+                                            echo '<div style="display:flex; justify-content:space-between; margin-bottom:2px;">';
+                                            echo '<span>' . $rate . '%対象額 (税込):</span>';
+                                            echo '<span>¥' . number_format($tax_data['target']) . ' (内消費税 ¥' . number_format($tax_data['tax']) . ')</span>';
+                                            echo '</div>';
+                                        }
+                                    }
+                                ?>
+                            </div>
                         </div>
-                        <div style="display:flex; flex-direction:column; gap:6px;">
+
+                        <div style="display:flex; flex-direction:column; gap:12px;">
                             <?php foreach ($items_data as $it): 
                                 $is_digital = ($it['format'] === 'digital');
                                 $dl_url = '';
                                 if ($is_digital && in_array($order->status, array('processing', 'completed'))) {
-                                    $dl_url = photo_purchase_generate_download_url($order->order_token, $it['id']);
+                                    if (function_exists('photo_purchase_generate_download_url')) {
+                                        $dl_url = photo_purchase_generate_download_url($order->order_token, $it['id']);
+                                    }
                                 }
+                                $is_sub = ($it['format'] === 'subscription');
                             ?>
-                                <div style="display:flex; justify-content:space-between; align-items:center;">
-                                    <div style="font-size:14px; color:#334155;">
-                                        • <?php echo esc_html(get_the_title($it['id'])); ?> 
-                                        <small style="color:#94a3b8;">(<?php echo photo_purchase_get_format_label($it['format']); ?> x<?php echo $it['qty']; ?>)</small>
-                                        <?php if ($it['format'] === 'subscription'):
-                                            $_cnt = get_post_meta($it['id'], '_photo_sub_interval_count', true) ?: '1';
-                                            $_inv = get_post_meta($it['id'], '_photo_sub_interval', true) ?: 'month';
-                                            $_inv_l = array('day' => '日', 'week' => '週', 'month' => 'ヶ月', 'year' => '年');
-                                            $_cycle = $_cnt . ($_inv_l[$_inv] ?? $_inv) . 'ごと';
-                                        ?>
-                                        <br><small style="color:#6366f1; font-weight:bold;">🔄 <?php echo esc_html($_cycle); ?> の自動更新</small>
-                                        <?php endif; ?>
+                                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom: 1px solid #f1f5f9;">
+                                    <div style="display:flex; align-items:flex-start; gap:12px;">
+                                        <div style="background:#fff; border:1px solid #e2e8f0; width:44px; height:44px; border-radius:8px; overflow:hidden; flex-shrink:0;">
+                                            <?php echo get_the_post_thumbnail($it['id'], 'thumbnail', array('style' => 'width:100%; height:100%; object-fit:cover;')); ?>
+                                        </div>
+                                        <div>
+                                            <div style="font-size:15px; font-weight:600; color:#334155; margin-bottom:2px;">
+                                                <?php echo esc_html(get_the_title($it['id'])); ?>
+                                            </div>
+                                            <div style="display:flex; align-items:center; gap:8px;">
+                                                <span style="font-size:12px; color:#94a3b8; font-weight:500;">
+                                                    <?php echo photo_purchase_get_format_label($it['format'] ?? ''); ?> x<?php echo $it['qty'] ?? 1; ?>
+                                                </span>
+                                                <?php if ($is_sub): 
+                                                    $count = get_post_meta($it['id'], '_photo_sub_interval_count', true) ?: '1';
+                                                    $interval = get_post_meta($it['id'], '_photo_sub_interval', true) ?: 'month';
+                                                    $intervals = array('day' => '日', 'week' => '週', 'month' => 'ヶ月', 'year' => '年');
+                                                    $cycle = $count . ($intervals[$interval] ?? $interval) . 'ごと';
+                                                ?>
+                                                    <span style="font-size:11px; background:#eef2ff; color:#4f46e5; font-weight:700; padding:2px 8px; border-radius:4px; border:1px solid #e0e7ff;">🔄 <?php echo esc_html($cycle); ?></span>
+                                                <?php endif; ?>
+                                            </div>
+                                        </div>
                                     </div>
                                     <?php if ($dl_url): ?>
-                                        <a href="<?php echo esc_url($dl_url); ?>" style="font-size:12px; color:#4f46e5; text-decoration:none; background:#eef2ff; padding:4px 10px; border-radius:6px; border:1px solid #c7d2fe;">⬇ ダウンロード</a>
+                                        <a href="<?php echo esc_url($dl_url); ?>" style="display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:bold; color:#fff; text-decoration:none; background:#4f46e5; padding:8px 16px; border-radius:10px; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);">
+                                            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                            ダウンロード
+                                        </a>
                                     <?php endif; ?>
                                 </div>
                             <?php endforeach; ?>
                         </div>
-
-                        <?php 
-                            $is_sub_order = !empty($order->stripe_customer_id);
-                            // Fallback: check if any item format is subscription
-                            if (!$is_sub_order && $items_data) {
-                                foreach ($items_data as $it) {
-                                    if ($it['format'] === 'subscription') { $is_sub_order = true; break; }
-                                }
-                            }
-                            if ($is_sub_order): ?>
-                            <div style="margin-top:15px; padding-top:15px; border-top:1px dashed #e2e8f0; text-align:right;">
-                                <?php if (!empty($order->stripe_customer_id)): ?>
-                                <form action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post" target="_blank">
-                                    <input type="hidden" name="action" value="photo_purchase_billing_portal">
-                                    <input type="hidden" name="customer_id" value="<?php echo esc_attr($order->stripe_customer_id); ?>">
-                                    <button type="submit" style="background:#4f46e5; color:#fff; border:none; padding:8px 16px; border-radius:8px; font-size:13px; font-weight:bold; cursor:pointer;">
-                                        サブスクリプションの管理・解除
-                                    </button>
-                                </form>
-                                <?php else: ?>
-                                <p style="color:#94a3b8; font-size:12px;">※ Stripe顧客IDが未設定のため、管理リンクを生成できません。<br>注文編集画面からStripe Customer IDを入力してください。</p>
+                        
+                        <?php if (!empty($order->tracking_number)): ?>
+                            <div style="margin-top:20px; padding:16px; background:#f0f9ff; border-radius:14px; border:1px solid #e0f2fe; display:flex; justify-content:space-between; align-items:center;">
+                                <div style="display:flex; align-items:center; gap:12px;">
+                                    <div style="color:#0369a1;">
+                                        <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none"><rect x="1" y="3" width="15" height="13"/><polyline points="16 8 20 8 23 11 23 16 16 16"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                                    </div>
+                                    <div>
+                                        <label style="display:block; font-size:11px; font-weight:700; color:#0369a1; text-transform:uppercase; margin-bottom:2px;">配送状況 (送り状番号)</label>
+                                        <span style="font-size:15px; font-weight:800; color:#0c4a6e;"><?php echo esc_html($order->tracking_number); ?></span>
+                                    </div>
+                                </div>
+                                <?php 
+                                $url = !empty($order->carrier) ? photo_purchase_get_carrier_url($order->carrier, $order->tracking_number) : '';
+                                if ($url): ?>
+                                    <a href="<?php echo esc_url($url); ?>" target="_blank" style="display:inline-flex; align-items:center; gap:8px; background:#fff; color:#0369a1; text-decoration:none; padding:8px 20px; border-radius:10px; font-size:14px; font-weight:bold; border:1px solid #bae6fd; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                                        追跡サイトを開く
+                                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                                    </a>
                                 <?php endif; ?>
                             </div>
                         <?php endif; ?>
+
+                        <?php if ($is_sub_order && !empty($order->stripe_customer_id)): ?>
+                            <div style="margin-top:20px; padding-top:20px; border-top: 1px dashed #e2e8f0; text-align:right;">
+                                <form action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post" target="_blank" style="display:inline-block;">
+                                    <input type="hidden" name="action" value="photo_purchase_billing_portal">
+                                    <input type="hidden" name="customer_id" value="<?php echo esc_attr($order->stripe_customer_id); ?>">
+                                    <button type="submit" style="background:#fff; color:#475569; border:2px solid #e2e8f0; padding:10px 24px; border-radius:12px; font-size:14px; font-weight:bold; cursor:pointer; display:flex; align-items:center; gap:8px; transition:all 0.2s;">
+                                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
+                                        プランの管理・詳細（Stripe）
+                                    </button>
+                                </form>
+                            </div>
+                        <?php endif; ?>
+
+                        <!-- Document Print Actions -->
+                        <div style="margin-top:20px; padding-top:20px; border-top: 1px solid #f1f5f9; display:flex; justify-content:flex-end; gap:12px;">
+                            <a href="<?php echo esc_url(add_query_arg(array('photo_purchase_action' => 'print_doc', 'order_id' => $order->id, 'type' => 'print_invoice', 'order_token' => $order->order_token), home_url('/'))); ?>" 
+                               target="_blank" 
+                               style="display:inline-flex; align-items:center; gap:8px; background:#fff; color:#475569; text-decoration:none; padding:8px 20px; border-radius:10px; font-size:13px; font-weight:bold; border:1px solid #e2e8f0;">
+                                📄 納品書（請求書）
+                            </a>
+                            <?php if ($order->status !== 'pending_payment' && $order->status !== 'cancelled'): ?>
+                                <a href="<?php echo esc_url(add_query_arg(array('photo_purchase_action' => 'print_doc', 'order_id' => $order->id, 'type' => 'print_receipt', 'order_token' => $order->order_token), home_url('/'))); ?>" 
+                                   target="_blank" 
+                                   style="display:inline-flex; align-items:center; gap:8px; background:#fff; color:#475569; text-decoration:none; padding:8px 20px; border-radius:10px; font-size:13px; font-weight:bold; border:1px solid #e2e8f0;">
+                                    💰 領収書
+                                </a>
+                            <?php endif; ?>
+                        </div>
                     </div>
                 <?php endforeach; ?>
             </div>
         <?php else: ?>
-            <p style="color:#94a3b8; text-align:center; padding:40px; background:#f8fafc; border-radius:12px;">まだ注文履歴がありません。</p>
+            <div style="background:#fff; border:2px dashed #e2e8f0; border-radius:24px; padding:80px 40px; text-align:center;">
+                <div style="background:#f1f5f9; width:64px; height:64px; border-radius:20px; display:flex; align-items:center; justify-content:center; margin:0 auto 24px; color:#94a3b8;">
+                    <svg viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" stroke-width="2" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+                </div>
+                <h3 style="color:#1e293b; font-size:20px; font-weight:700; margin:0 0 8px;">注文履歴が見つかりません</h3>
+                <p style="color:#94a3b8; font-size:16px;">まだ商品をご注文いただいていないか、別のアカウントでのご注文の可能性があります。</p>
+            </div>
         <?php endif; ?>
 
     <?php endif; ?>
     </div>
-    <script>
-    // Ensure dashicons are loaded for the font
-    if (!document.getElementById('dashicons-css')) {
-        const link = document.createElement('link');
-        link.id = 'dashicons-css';
-        link.rel = 'stylesheet';
-        link.href = '/wp-includes/css/dashicons.min.css';
-        document.head.appendChild(link);
+    <style>
+    .photo-purchase-portal button:hover { transform: translateY(-1px); }
+    .photo-purchase-portal input:focus { border-color: #4f46e5 !important; }
+    @media (max-width: 600px) {
+        .photo-purchase-portal header { flex-direction: column; gap: 16px; text-align: center; }
+        .photo-purchase-portal header a { width: 100%; text-align: center; }
     }
-    </script>
+    </style>
     <?php
     return ob_get_clean();
 }
-add_shortcode('ec_customer_portal', 'photo_purchase_customer_portal_shortcode');
+add_shortcode('ec_member_dashboard', 'photo_purchase_member_dashboard_shortcode');
+
 
 /**
  * Handle Billing Portal Redirect
@@ -3403,4 +3692,56 @@ function photo_purchase_check_stock_alert($product_id) {
         // Mark as alert sent.
         update_post_meta($product_id, '_photo_stock_alert_sent', '1');
     }
+}
+
+/**
+ * Helper: Get Carrier Tracking URL
+ */
+function photo_purchase_get_carrier_url($carrier, $num) {
+    if (empty($num)) return '';
+    $num = trim($num);
+    
+    switch ($carrier) {
+        case 'yamato':
+            return 'https://toi.kuronekoyamato.co.jp/cgi-bin/tneko?kuroneko=' . $num;
+        case 'sagawa':
+            return 'https://k2k.sagawa-exp.co.jp/p/web/okurijosearch.do?okurijoNo=' . $num;
+        case 'japanpost':
+            return 'https://trackings.post.japanpost.jp/services/srv/search/direct?searchKind=S004&locale=ja&reqCodeNo1=' . $num;
+        case 'seino':
+            return 'https://track.seino.co.jp/shisetsu/CheckAll.do?kbNo1=' . $num;
+        default:
+            return '';
+    }
+}
+
+/**
+ * Helper: Get Carrier Label
+ */
+function photo_purchase_get_carrier_label($carrier) {
+    $carriers = array(
+        'yamato' => 'ヤマト運輸',
+        'sagawa' => '佐川急便',
+        'japanpost' => '日本郵便',
+        'seino' => '西濃運輸',
+        'other' => 'その他'
+    );
+    return $carriers[$carrier] ?? $carrier;
+}
+
+
+
+/**
+ * Helper: Get Status Label (Japanese)
+ */
+function photo_purchase_get_status_label($status) {
+    $statuses = array(
+        'pending_payment' => 'お支払い待ち',
+        'processing'      => '準備中 / 支払い済み',
+        'completed'       => '発送済み / 完了',
+        'active'          => '有効 (サブスク)',
+        'cancelled'       => 'キャンセル',
+        'refunded'        => '返金済み'
+    );
+    return $statuses[$status] ?? $status;
 }
