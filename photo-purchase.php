@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Simple EC
  * Description: 簡易的な写真・デジタルコンテンツ販売プラグイン。Stripe、PayPay、代引き、銀行振込に対応。
- * Version: 3.9.0
+ * Version: 3.10.0
  * Author: アートフレア株式会社
  * Author URI: https://www.artflair.co.jp/
  * Text Domain: photo-purchase
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define constants
-define('PHOTO_PURCHASE_VERSION', '3.9.0');
+define('PHOTO_PURCHASE_VERSION', '3.10.0');
 define('PHOTO_PURCHASE_PATH', plugin_dir_path(__FILE__));
 define('PHOTO_PURCHASE_URL', plugin_dir_url(__FILE__));
 
@@ -376,6 +376,8 @@ function photo_purchase_settings_page()
 			update_option('photo_pp_google_client_secret', sanitize_text_field($_POST['google_client_secret']));
 			update_option('photo_pp_line_client_id', sanitize_text_field($_POST['line_client_id']));
 			update_option('photo_pp_line_client_secret', sanitize_text_field($_POST['line_client_secret']));
+		} elseif ($active_tab == 'membership_terms') {
+			update_option('photo_pp_membership_terms', wp_kses_post($_POST['membership_terms']));
 		}
 
 		photo_purchase_log('info', '各種設定を更新しました。', array('tab' => $active_tab, 'user' => get_current_user_id()));
@@ -401,6 +403,8 @@ function photo_purchase_settings_page()
 				class="nav-tab <?php echo $active_tab == 'tokushoho' ? 'nav-tab-active' : ''; ?>"><?php _e('特定商取引法', 'photo-purchase'); ?></a>
 			<a href="?post_type=photo_product&page=photo-purchase-settings&tab=sns"
 				class="nav-tab <?php echo $active_tab == 'sns' ? 'nav-tab-active' : ''; ?>"><?php _e('SNS連携', 'photo-purchase'); ?></a>
+			<a href="?post_type=photo_product&page=photo-purchase-settings&tab=membership_terms"
+				class="nav-tab <?php echo $active_tab == 'membership_terms' ? 'nav-tab-active' : ''; ?>"><?php _e('会員規約', 'photo-purchase'); ?></a>
 		</h2>
 
 		<form method="post"
@@ -892,6 +896,22 @@ function photo_purchase_settings_page()
 						<td><code><?php echo esc_url(home_url('/?pp_sns_callback=line')); ?></code></td>
 					</tr>
 				</table>
+			<?php elseif ($active_tab == 'membership_terms'): ?>
+				<h3 class="title"><?php _e('会員規約の設定', 'photo-purchase'); ?></h3>
+				<p class="description">
+					会員登録や購入時に適用される会員規約、または利用規約をこちらに入力してください。<br>
+					入力した内容は <code>[ec_membership_terms]</code> ショートコードで表示できます。<br>
+					（`/membership-terms/` というスラッグの固定ページを作成し、ショートコードを貼り付けることを推奨します）
+				</p>
+				<table class="form-table">
+					<tr>
+						<th><label for="membership_terms"><?php _e('規約本文', 'photo-purchase'); ?></label></th>
+						<td>
+							<textarea name="membership_terms" id="membership_terms" rows="20" class="large-text" style="font-family: inherit;"><?php echo esc_textarea(get_option('photo_pp_membership_terms', '')); ?></textarea>
+							<p class="description"> HTML（p, br, strong, aタグ等）が使用可能です。</p>
+						</td>
+					</tr>
+				</table>
 			<?php endif; ?>
 
 			<p class="submit">
@@ -1089,6 +1109,36 @@ function photo_purchase_tokushoho_shortcode()
 add_shortcode('ec_tokushoho', 'photo_purchase_tokushoho_shortcode');
 
 /**
+ * Shortcode: Membership Terms
+ */
+function photo_purchase_membership_terms_shortcode()
+{
+	$terms = get_option('photo_pp_membership_terms');
+	if (empty($terms)) {
+		return '<p>' . __('会員規約が設定されていません。', 'photo-purchase') . '</p>';
+	}
+
+	ob_start();
+	?>
+	<div class="photo-membership-terms" style="margin: 20px 0; font-family: sans-serif; color: #333; line-height: 1.8; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #eee;">
+		<?php echo wpautop(do_shortcode(wp_kses_post($terms))); ?>
+	</div>
+	<?php
+	return ob_get_clean();
+}
+add_shortcode('ec_membership_terms', 'photo_purchase_membership_terms_shortcode');
+
+/**
+ * Shortcode: Shop Name
+ */
+function photo_purchase_shop_name_shortcode()
+{
+	return get_bloginfo('name');
+}
+add_shortcode('ec_shop_name', 'photo_purchase_shop_name_shortcode');
+add_shortcode('ショップ名', 'photo_purchase_shop_name_shortcode');
+
+/**
  * Shortcode: Shipping and Payment Info
  */
 function photo_purchase_shipping_payment_shortcode()
@@ -1238,12 +1288,23 @@ function photo_purchase_activate()
 			'slug'  => 'my-page',
 			'content' => '[ec_member_dashboard]',
 		),
+		'photo_membership_terms_page_id' => array(
+			'title' => '会員規約',
+			'slug'  => 'membership-terms',
+			'content' => '[ec_membership_terms]',
+		),
 	);
 
 	// 旧設定からの移行処理（名称変更に伴う対応）
 	$old_portal_id = get_option('photo_customer_portal_page_id');
 	if ($old_portal_id && !get_option('photo_my_page_id')) {
 		update_option('photo_my_page_id', $old_portal_id);
+	}
+
+	// デフォルトの会員規約を設定
+	if (!get_option('photo_pp_membership_terms')) {
+		$default_terms = "第1条（適用）\n本規約は、[ショップ名]（以下「当ショップ」）が運営するオンラインショップ（以下「本サービス」）の利用条件を定めるものです。本サービスの利用者（以下「会員」）は、本規約に従って本サービスを利用するものとします。\n\n第2条（会員登録）\n入会希望者が当ショップの定める方法によって利用登録を申請し、当ショップがこれを承認することによって、利用登録が完了するものとします。\n\n当ショップは、以下の事由があると判断した場合、利用登録の申請を承認しないことがあり、その理由については一切の開示義務を負わないものとします。\n\n虚偽の事項を届け出た場合\n\n本規約に違反したことがある者からの申請である場合\n\nその他、当ショップが利用登録を相当でないと判断した場合\n\n第3条（IDおよびパスワードの管理）\n会員は、自己の責任において、本サービスのユーザーIDおよびパスワードを適切に管理するものとします。\n\n会員は、いかなる場合にも、ユーザーIDおよびパスワードを第三者に譲渡または貸与し、もしくは第三者と共用することはできません。\n\n第4条（売買契約）\n本サービスにおいては、会員が当ショップに対して購入の申し込みをし、これに対して当ショップが当該申し込みを承諾した旨の通知を送付した時点で、売買契約が成立するものとします。\n\n商品の所有権は、当ショップが商品を配送業者に引き渡した時点で、会員に移転するものとします。\n\n第5条（返品・交換）\n商品の返品または交換は、商品到着後[7]日以内、かつ未使用の場合に限り受け付けるものとします。ただし、商品の欠陥や不良など当ショップの責めに帰すべき事由がある場合は、この限りではありません。\n\n第6条（禁止事項）\n会員は、本サービスの利用にあたり、以下の行為をしてはなりません。\n\n法令または公序良俗に違反する行為\n\n犯罪行為に関連する行為\n\n本サービスに含まれる著作権、商標権ほか知的財産権を侵害する行為\n\n他の会員または第三者に不利益、損害、不快感を与える行為\n\n本サービスの運営を妨害するおそれのある行為\n\n第7条（本サービスの提供の停止等）\n当ショップは、以下のいずれかの事由があると判断した場合、会員に事前に通知することなく本サービスの全部または一部の提供を停止または中断することができるものとします。\n\nシステムの保守点検または更新を行う場合\n\n地震、落雷、火災、停電または天災などの不可抗力により、本サービスの提供が困難となった場合\n\nその他、当ショップが本サービスの提供が困難と判断した場合\n\n第8条（利用制限および登録抹消）\n当ショップは、会員が本規約のいずれかの条項に違反した場合、事前の通知なく、会員に対して本サービスの全部もしくは一部の利用を制限し、または会員としての登録を抹消することができるものとします。\n\n第9条（退会）\n会員は、当ショップの定める退会手続により、本サービスから退会できるものとします。\n\n第10条（規約の変更）\n当ショップは、必要と判断した場合には、会員に通知することなくいつでも本規約を変更することができるものとします。\n\n第11条（個人情報の取扱い）\n当ショップは、本サービスの利用によって取得する個人情報については、当ショップ「プライバシーポリシー」に従い適切に取り扱うものとします。\n\n第12条（準拠法・裁判管轄）\n本規約の解釈にあたっては、日本法を準拠法とします。\n\n本サービスに関して紛争が生じた場合には、当ショップの本店所在地を管轄する裁判所を専属的合意管轄とします。";
+		update_option('photo_pp_membership_terms', $default_terms);
 	}
 
 	foreach ($pages as $option_key => $page_data) {

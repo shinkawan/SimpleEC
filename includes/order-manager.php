@@ -3057,30 +3057,39 @@ function photo_purchase_member_dashboard_shortcode($atts)
                 </div>
                 <?php if (isset($_GET['reset_auth'])) { unset($_SESSION['pp_auth_pending_email']); wp_safe_redirect(get_permalink()); exit; } ?>
             <?php else: ?>
-                <!-- ステップ 1: メールアドレス入力 -->
-                <form method="post" style="max-width:440px; margin:0 auto;">
-                    <?php wp_nonce_field('pp_auth_request', 'pp_auth_nonce'); ?>
-                    <div style="margin-bottom:16px; text-align:left;">
-                        <label style="display:block; font-size:14px; font-weight:600; color:#475569; margin-bottom:8px;">メールアドレス</label>
-                        <input type="email" name="pp_auth_email" placeholder="注文時のメールアドレスを入力" required
-                               style="padding:14px 18px; border-radius:12px; border:2px solid #e2e8f0; width:100%; font-size:16px; outline:none; transition:border-color 0.2s;">
+                <!-- ログイン方法の提供 -->
+                <div style="max-width:440px; margin:0 auto;">
+                    <?php 
+                    // 1. SNSログインを上に配置
+                    $sns_config = photo_purchase_get_sns_config();
+                    $has_sns_setup = !empty($sns_config['google']['client_id']) || !empty($sns_config['line']['client_id']);
+                    
+                    if ($has_sns_setup || current_user_can('manage_options')): ?>
+                        <div style="margin-bottom:32px;">
+                            <?php echo photo_purchase_render_sns_login_buttons(); ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <!-- 2. メールアドレス入力を下に配置 -->
+                    <div style="border-top: 1px dashed #e2e8f0; padding-top: 32px;">
+                        <p style="color:#64748b; margin-bottom:20px; font-size:15px;"><?php _e('メールアドレスで認証（過去にご利用のある方向け）', 'photo-purchase'); ?></p>
+                        <form method="post">
+                            <?php wp_nonce_field('pp_auth_request', 'pp_auth_nonce'); ?>
+                            <div style="margin-bottom:16px; text-align:left;">
+                                <input type="email" name="pp_auth_email" placeholder="メールアドレス" required
+                                    style="padding:14px 18px; border-radius:12px; border:2px solid #e2e8f0; width:100%; font-size:16px; outline:none; transition:border-color 0.2s;">
+                            </div>
+                            <button type="submit" style="background:#4f46e5; color:#fff; padding:16px 32px; border:none; border-radius:12px; cursor:pointer; font-weight:bold; font-size:16px; width:100%; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);">
+                                認証コードを送信
+                            </button>
+                        </form>
+                        
+                        <p style="font-size: 11px; color: #888; margin-top: 20px; line-height: 1.5;">
+                            <?php printf(__('認証を行うことで、%sに同意したものとみなされます。', 'photo-purchase'), '<a href="' . esc_url(home_url('/membership-terms/')) . '" target="_blank" style="color: #4f46e5; text-decoration: underline;">' . __('会員規約', 'photo-purchase') . '</a>'); ?>
+                        </p>
                     </div>
-                    <button type="submit" style="background:#4f46e5; color:#fff; padding:16px 32px; border:none; border-radius:12px; cursor:pointer; font-weight:bold; font-size:16px; width:100%; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);">
-                        認証コードを受け取る
-                    </button>
-                </form>
-                <?php 
-                // Show SNS buttons if configured OR if user is admin (for preview)
-                $sns_config = photo_purchase_get_sns_config();
-                $has_sns_setup = !empty($sns_config['google']['client_id']) || !empty($sns_config['line']['client_id']);
-                
-                if ($has_sns_setup || current_user_can('manage_options')): ?>
-                    <div style="margin-top:32px; padding-top:24px; border-top:1px solid #f1f5f9;">
-                        <!-- SNS Login Buttons -->
-                        <?php echo photo_purchase_render_sns_login_buttons(); ?>
-                    </div>
-                <?php endif; ?>
-            <?php endif; ?>
+                </div>
+<?php endif; ?>
         </div>
 
     <?php else: ?>

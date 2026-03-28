@@ -300,7 +300,7 @@ function photo_purchase_render_sns_login_buttons() {
     $current_url = set_url_scheme('http://' . wp_unslash($_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI']));
     ?>
     <div class="photo-sns-login-container">
-        <p class="photo-sns-login-title"><?php _e('またはSNSアカウントでログイン', 'photo-purchase'); ?></p>
+        <p class="photo-sns-login-title"><?php _e('SNSアカウントでログイン', 'photo-purchase'); ?></p>
         <div class="photo-sns-buttons">
             <?php if (in_array('google', $enabled_sns)): ?>
                 <a href="<?php echo esc_url(photo_purchase_get_sns_auth_url('google', $current_url)); ?>" class="photo-sns-button photo-sns-google">

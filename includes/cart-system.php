@@ -186,6 +186,10 @@ function photo_purchase_checkout_shortcode()
                             <button type="button" id="photo-otp-verify-btn" class="button button-primary" style="padding: 8px 30px; border-radius: 20px;"><?php _e('ログイン', 'photo-purchase'); ?></button>
                             <div id="photo-otp-msg-2" style="color: red; font-size: 13px; margin-top: 10px; display:none;"></div>
                         </div>
+
+                        <p style="font-size: 11px; color: #888; margin-top: 15px; text-align: center;">
+                            <?php printf(__('認証を行うことで、%sに同意したものとみなされます。', 'photo-purchase'), '<a href="' . esc_url(home_url('/membership-terms/')) . '" target="_blank" style="color: #0073aa; text-decoration: underline;">' . __('会員規約', 'photo-purchase') . '</a>'); ?>
+                        </p>
                     </div>
 
                 </div>
@@ -305,8 +309,14 @@ function photo_purchase_checkout_shortcode()
             <?php _e('カートを読み込んでいます...', 'photo-purchase'); ?>
         </div>
 
+        <div style="margin-top: 30px; text-align: right;">
+            <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
+                <?php printf(__('「注文を確定する」をクリックすることで、%sに同意したものとみなされます。', 'photo-purchase'), '<a href="' . esc_url(home_url('/membership-terms/')) . '" target="_blank" style="color: #0073aa; text-decoration: underline;">' . __('会員規約', 'photo-purchase') . '</a>'); ?>
+            </p>
+        </div>
+
         <div
-            style="text-align:right; display: flex; justify-content: flex-end; gap: 10px; align-items: center; margin-top: 30px;">
+            style="text-align:right; display: flex; justify-content: flex-end; gap: 10px; align-items: center; margin-top: 10px;">
             <button type="button" class="clear-cart-btn button"
                 style="background: #f8f9fa; color: #666; border: 1px solid #ddd; padding: 10px 20px; border-radius: 30px;">
                 <?php _e('カートを空にする', 'photo-purchase'); ?>

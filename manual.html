@@ -347,6 +347,7 @@
         <li><a href="#stock-alert">在庫アラート機能</a></li>
         <li><a href="#shortcodes">利用可能なショートコード一覧</a></li>
         <li><a href="#security">セキュリティと信頼性</a></li>
+        <li><a href="#membership-terms">会員規約の設定 [v3.9.0]</a></li>
         <li><a href="#faq">よくある質問</a></li>
       </ol>
     </nav>
@@ -479,13 +480,19 @@
         </tr>
 
         <tr>
-          <td rowspan="2"><strong>特定商取引法</strong></td>
+          <td><strong>特定商取引法</strong></td>
           <td>法的事項の入力</td>
           <td>販売業者名、所在地、連絡先など、ネット販売に必須の項目。<code>[ec_tokushoho]</code>で表示。</td>
         </tr>
         <tr>
-          <td>登録番号 (T番号) / 税率</td>
-          <td>適格請求書発行事業者の登録番号を設定します。<strong>標準（10%）と軽減（8%）</strong>の税率もここで定義します。</td>
+          <td><strong>SNS連携</strong></td>
+          <td>Google / LINE 連携</td>
+          <td>SNSログインボタンの表示切替と、各サービスのAPIキーを設定します。</td>
+        </tr>
+        <tr>
+          <td><strong>会員規約</strong></td>
+          <td>規約本文の入力</td>
+          <td>会員登録や購入時に適用される規約を編集します。<code>[ec_membership_terms]</code>で表示。</td>
         </tr>
       </table>
 
@@ -672,6 +679,34 @@
 
       <div class="alert alert-info">
         💡 <strong>「ログはありません」と表示される場合</strong>: システムが正常に稼働し、エラーが一度も発生していない状態です。エラーが発生した際のみ記録されます。
+      </div>
+    </section>
+
+    <!-- 7.7 会員規約（利用規約）の設定 -->
+    <section id="membership-terms">
+      <h2>7.7 会員規約（利用規約）の設定 [v3.10.0]</h2>
+      <p>会員登録や商品の購入に際して、お客様に同意いただく規約を管理・表示できます。</p>
+
+      <div class="card">
+        <h4>📋 設定と表示の手順</h4>
+        <ol style="padding-left:20px; font-size:0.95rem;">
+          <li><strong>各種設定 → 会員規約</strong> タブを開きます。</li>
+          <li>規約の本文を入力し「設定を保存」をクリックしてください。
+            <ul>
+              <li><strong>ショップ名の自動反映</strong>: 本文中に <code>[ショップ名]</code> または <code>[ec_shop_name]</code> と記述すると、WordPressの「サービス名（サイト名）」が自動的に挿入されます。</li>
+              <li>日本語のショートコードが不安な場合は、英数表記の <code>[ec_shop_name]</code> をご利用ください。どちらも同じ動作をします。</li>
+              <li>HTMLタグ（p, br, strong等）が使用可能です。</li>
+            </ul>
+          </li>
+          <li><strong>固定ページの自動生成</strong>: プラグインのインストール・有効化時に、<code>[ec_membership_terms]</code> が配置された「会員規約」固定ページが自動的に作成されています。</li>
+          <li>もしページを削除してしまった場合は、再度固定ページを作成し、以下のショートコードを貼り付けてください。
+            <div class="shortcode" style="margin-top:10px;">[ec_membership_terms]</div>
+          </li>
+        </ol>
+      </div>
+
+      <div class="alert alert-info">
+        💡 <strong>同意の仕組み</strong>: Simple ECでは、ユーザーの利便性を考慮し「ログインまたは注文確定を行う＝規約に同意した」とみなす法的構成を採用しています。ログインフォームや注文ボタン付近に、規約へのリンクを含む文言が自動的に挿入されます。
       </div>
     </section>
 
@@ -1002,6 +1037,14 @@
           <td><code>[ec_member_dashboard]</code></td>
           <td>統合マイページを表示します。パスワード不要のメール認証（OTP）ログインに対応。履歴確認やサブスク管理が可能です [v3.9.0]</td>
         </tr>
+        <tr>
+          <td><code>[ec_membership_terms]</code></td>
+          <td>会員規約（利用規約）を表示します。本文内の <code>[ショップ名]</code> 等も自動展開されます [v3.10.0]</td>
+        </tr>
+        <tr>
+          <td><code>[ショップ名]</code> / <code>[ec_shop_name]</code></td>
+          <td>WordPress設定の「サイト名」を表示します。規約本文などの各所で使用可能です [v3.10.0]</td>
+        </tr>
       </table>
     </section>
 
@@ -1059,7 +1102,7 @@
   </div>
 
   <footer>
-    <p>シンプルECプラグイン v3.9.0 &nbsp;|&nbsp; 管理マニュアル</p>
+    <p>シンプルECプラグイン v3.10.0 &nbsp;|&nbsp; 管理マニュアル</p>
   </footer>
 
 </body>
