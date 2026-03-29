@@ -73,6 +73,7 @@ function photo_purchase_gallery_shortcode($atts)
     if (is_user_logged_in()) {
         $current_user = wp_get_current_user();
         $user_name = $current_user->display_name ?: $current_user->user_login;
+        $current_user_email = $current_user->user_email;
         $mypage_url = function_exists('photo_purchase_get_dashboard_url') ? photo_purchase_get_dashboard_url() : home_url('/dashboard/');
         $logout_url = wp_logout_url(home_url(add_query_arg(null, null)));
         ?>
@@ -231,6 +232,7 @@ function photo_purchase_gallery_shortcode($atts)
 
                 $thumbnail = get_the_post_thumbnail_url($post_id, 'large');
                 $full_image = get_the_post_thumbnail_url($post_id, 'full');
+                $product_label = get_post_meta($post_id, '_photo_product_label', true);
                 $gallery_ids = get_post_meta($post_id, '_ec_gallery_ids', true);
                 $gallery_urls = [];
                 if ($gallery_ids) {
@@ -258,8 +260,28 @@ function photo_purchase_gallery_shortcode($atts)
                         <div class="photo-thumb-wrap" style="position:relative; cursor:zoom-in;">
                             <img src="<?php echo esc_url($thumbnail); ?>" alt="<?php the_title_attribute(); ?>"
                                 class="demo-photo lightbox-trigger" data-full="<?php echo esc_url($full_image); ?>">
+                            <?php if ($product_label): 
+                                $product_label_color = get_post_meta($post_id, '_photo_product_label_color', true) ?: '#4f46e5';
+                            ?>
+                                <div class="pp-product-label" style="--label-color: <?php echo esc_attr($product_label_color); ?>;"><?php echo esc_html($product_label); ?></div>
+                            <?php endif; ?>
                             <?php if ($is_sold_out): ?>
-                                <div class="sold-out-badge" style="position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); color: #fff; padding: 5px 12px; border-radius: 4px; font-weight: bold; font-size: 14px; z-index: 10; pointer-events: none;">売り切れ</div>
+                                <div class="sold-out-badge" style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.7); color: #fff; padding: 5px 12px; border-radius: 4px; font-weight: bold; font-size: 14px; z-index: 10; pointer-events: none;">売り切れ</div>
+                                
+                                <!-- Restock Notification -->
+                                <div class="restock-notify-wrap" style="position: absolute; bottom: 50px; left: 10px; z-index: 20;">
+                                    <button class="restock-notify-open-btn" style="background: rgba(255,255,255,0.95); border: 1px solid #ddd; padding: 4px 10px; border-radius: 20px; font-size: 11px; cursor: pointer; color: #333; display: flex; align-items: center; gap: 5px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: all 0.2s;">
+                                        <span>📧</span> <?php _e('再入荷通知を受け取る', 'photo-purchase'); ?>
+                                    </button>
+                                    <div class="restock-notify-form" style="display: none; background: #fff; padding: 12px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); margin-top: 8px; width: 220px; border: 1px solid #eee;">
+                                        <p style="margin: 0 0 8px; font-size: 10px; color: #666;"><?php _e('再入荷時にメールでお知らせします。', 'photo-purchase'); ?></p>
+                                        <input type="email" class="restock-email-input" 
+                                            value="<?php echo is_user_logged_in() ? esc_attr($current_user_email) : ''; ?>" 
+                                            placeholder="メールアドレス" style="width: 100%; border: 1px solid #ddd; padding: 8px; border-radius: 4px; font-size: 11px; margin-bottom: 8px; box-sizing: border-box;">
+                                        <button class="restock-submit-btn" data-id="<?php echo $post_id; ?>" style="width: 100%; background: #4f46e5; color: #fff; border: none; padding: 8px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold;"><?php _e('通知を受け取る', 'photo-purchase'); ?></button>
+                                        <div class="restock-msg" style="font-size: 10px; margin-top: 8px; text-align: center; display: none;"></div>
+                                    </div>
+                                </div>
                             <?php endif; ?>
                         </div>
                     <?php endif; ?>

@@ -97,6 +97,45 @@ add_action('wp_ajax_photo_get_cart_details', 'photo_purchase_get_cart_details');
 add_action('wp_ajax_nopriv_photo_get_cart_details', 'photo_purchase_get_cart_details');
 
 /**
+ * AJAX: Register Restock Notification
+ */
+function photo_purchase_register_restock()
+{
+    check_ajax_referer('photo_purchase_nonce', 'nonce');
+
+    $product_id = intval($_POST['product_id'] ?? 0);
+    $email = sanitize_email($_POST['email'] ?? '');
+
+    if (!$product_id || !is_email($email)) {
+        wp_send_json_error(array('message' => __('有効なメールアドレスを入力してください。', 'photo-purchase')));
+    }
+
+    $emails = get_post_meta($product_id, '_photo_restock_emails', true) ?: array();
+    
+    if (!is_array($emails)) {
+        $emails = array();
+    }
+
+    if (!in_array($email, $emails)) {
+        $emails[] = $email;
+        update_post_meta($product_id, '_photo_restock_emails', $emails);
+    }
+
+    // Store page-specific URL for better mapping
+    $page_url = esc_url_raw($_POST['page_url'] ?? '');
+    if ($page_url) {
+        $url_mapping = get_post_meta($product_id, '_photo_restock_urls', true) ?: array();
+        if (!is_array($url_mapping)) $url_mapping = array();
+        $url_mapping[$email] = $page_url;
+        update_post_meta($product_id, '_photo_restock_urls', $url_mapping);
+    }
+
+    wp_send_json_success(array('message' => __('通知予約が完了しました。入荷次第メールをお送りします。', 'photo-purchase')));
+}
+add_action('wp_ajax_photo_register_restock', 'photo_purchase_register_restock');
+add_action('wp_ajax_nopriv_photo_register_restock', 'photo_purchase_register_restock');
+
+/**
  * Shortcode: Cart Indicator
  */
 function photo_purchase_cart_indicator_shortcode()

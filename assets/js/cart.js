@@ -188,6 +188,57 @@ jQuery(document).ready(function ($) {
         saveFavs(favs);
     });
 
+    // Restock Notification Toggle
+    $(document).on('click', '.restock-notify-open-btn', function(e) {
+        e.preventDefault();
+        $(this).next('.restock-notify-form').slideToggle(200);
+    });
+
+    // Restock Notification Submit
+    $(document).on('click', '.restock-submit-btn', function(e) {
+        e.preventDefault();
+        var $btn = $(this);
+        var $form = $btn.closest('.restock-notify-form');
+        var $input = $form.find('.restock-email-input');
+        var $msg = $form.find('.restock-msg');
+        var productId = $btn.data('id');
+        var email = $input.val();
+
+        if (!email || !email.includes('@')) {
+            $msg.text('有効なメールアドレスを入力してください。').css('color', '#e11d48').fadeIn();
+            return;
+        }
+
+        $btn.prop('disabled', true).text('登録中...');
+
+        $.ajax({
+            url: photoPurchase.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'photo_register_restock',
+                product_id: productId,
+                email: email,
+                page_url: window.location.href,
+                nonce: photoPurchase.nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    $form.html('<div style="text-align:center; padding:10px 0;"><span style="font-size:24px;">✅</span><p style="margin:5px 0 0; font-size:11px; color:#059669;">' + response.data.message + '</p></div>');
+                    setTimeout(function() {
+                        $form.closest('.restock-notify-wrap').fadeOut();
+                    }, 3000);
+                } else {
+                    $msg.text(response.data.message).css('color', '#e11d48').fadeIn();
+                    $btn.prop('disabled', false).text('通知を受け取る');
+                }
+            },
+            error: function() {
+                $msg.text('通信エラーが発生しました。').css('color', '#e11d48').fadeIn();
+                $btn.prop('disabled', false).text('通知を受け取る');
+            }
+        });
+    });
+
     // Favorite Filter
     $('#toggle-fav-filter').on('click', function () {
         $(this).toggleClass('active');
@@ -808,4 +859,20 @@ jQuery(document).ready(function ($) {
 
     updateCartUI();
     updateFavUI();
+
+    // Auto-open quickview if photo_id is in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const photoId = urlParams.get('photo_id');
+    if (photoId) {
+        setTimeout(function() {
+            var $target = $('.photo-item[data-id="' + photoId + '"] .lightbox-trigger');
+            if ($target.length) {
+                $target.trigger('click');
+                // Scroll to the item
+                $('html, body').animate({
+                    scrollTop: $target.offset().top - 100
+                }, 500);
+            }
+        }, 500);
+    }
 });

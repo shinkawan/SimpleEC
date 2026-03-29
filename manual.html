@@ -319,7 +319,7 @@
   <header>
     <h1>🛒シンプルECプラグイン</h1>
     <p>管理者・オーナー向けマニュアル</p>
-    <div class="version-badge">v3.10.0 (会員規約自動生成・OTP認証・SNS切替・インボイス・帳票搭載)</div>
+    <div class="version-badge">v3.11.0 (商品ラベル・会員規約・OTP認証・SNS切替・インボイス搭載)</div>
   </header>
 
   <div class="container">
@@ -328,27 +328,29 @@
     <nav class="toc">
       <h2>📋 目次</h2>
       <ol>
-        <li><a href="#overview">プラグイン概要</a></li>
-        <li><a href="#setup">初期設定（各種設定）</a></li>
-        <li><a href="#photo">商品の登録・管理</a></li>
-        <li><a href="#bulk">メディアライブラリからの一括登録</a></li>
-        <li><a href="#order">注文管理（受注一覧）</a></li>
-        <li><a href="#tracking">配送状況の追跡連携</a></li>
-        <li><a href="#member">会員機能とマイページ</a></li>
-        <li><a href="#sns-login">SNSログイン連携 (Google / LINE)</a></li>
-        <li><a href="#system-log">システムログの確認</a></li>
-        <li><a href="#status">注文ステータスフロー</a></li>
-        <li><a href="#actions">各種アクション操作</a></li>
-        <li><a href="#coupon">クーポン管理</a></li>
-        <li><a href="#subscription">サブスクリプション機能</a></li>
-        <li><a href="#inquiry">購入者向け注文照会ページ</a></li>
-        <li><a href="#download">ダウンロード管理</a></li>
-        <li><a href="#csv">受注データのCSV出力</a></li>
-        <li><a href="#stock-alert">在庫アラート機能</a></li>
-        <li><a href="#shortcodes">利用可能なショートコード一覧</a></li>
-        <li><a href="#membership-terms">会員規約の設定 [v3.10.0]</a></li>
-        <li><a href="#security">セキュリティと信頼性</a></li>
-        <li><a href="#faq">よくある質問</a></li>
+        <li><a href="#overview">1. プラグイン概要</a></li>
+        <li><a href="#setup">2. 初期設定（各種設定）</a></li>
+        <li><a href="#photo">3. 商品の登録・管理</a></li>
+        <li><a href="#bulk">4. メディアライブラリからの一括登録</a></li>
+        <li><a href="#order">5. 注文管理（受注一覧）</a></li>
+        <li><a href="#product-labels">6. 商品ラベル（リボン）の設定 [v3.11.0]</a></li>
+        <li><a href="#tracking">7. 配送状況の追跡連携</a></li>
+        <li><a href="#member">8. 会員機能とマイページ</a></li>
+        <li><a href="#sns-login">9. SNSログイン連携 (Google / LINE)</a></li>
+        <li><a href="#system-log">10. システムログの確認</a></li>
+        <li><a href="#membership-terms-display">11. 会員規約（利用規約）の設定</a></li>
+        <li><a href="#status">12. 注文ステータスフロー</a></li>
+        <li><a href="#actions">13. 各種アクション操作</a></li>
+        <li><a href="#coupon">14. クーポン管理</a></li>
+        <li><a href="#subscription">15. サブスクリプション機能</a></li>
+        <li><a href="#inquiry">16. 購入者向け注文照会ページ</a></li>
+        <li><a href="#download">17. ダウンロード管理</a></li>
+        <li><a href="#csv">18. 受注データのCSV出力</a></li>
+        <li><a href="#stock-alert">19. 在庫アラート機能</a></li>
+        <li><a href="#shortcodes">20. 利用可能なショートコード一覧</a></li>
+        <li><a href="#security">21. セキュリティと信頼性</a></li>
+        <li><a href="#faq">22. よくある質問</a></li>
+        <li><a href="#changelog">23. アップデート履歴</a></li>
       </ol>
     </nav>
 
@@ -591,9 +593,41 @@
       </div>
     </section>
 
-    <!-- 6. 配送状況の追跡連携 -->
+    <!-- 6. 商品ラベル（リボン）の設定 -->
+    <section id="product-labels">
+      <h2>6. 商品ラベル（リボン）の設定 [v3.11.0]</h2>
+      <p>特定の商品を際立たせるためのカスタムラベル（リボン）を、画像の上に表示できます。</p>
+      <div class="card">
+        <h4>📝 設定方法</h4>
+        <ol style="padding-left:20px;">
+          <li>商品編集画面の「商品の詳細設定」を開きます。</li>
+          <li><strong>「商品ラベル」</strong>欄に表示したい文言（例：「NEW」「SALE」「おすすめ」等）を入力します。</li>
+          <li><strong>カラーピッカー</strong>やクリック選択ボタンを使用して、ラベルの背景色を自由に変更できます。</li>
+          <li>「更新」ボタンを押すと、ショップ画面の商品画像左上に指定した色でリボンが表示されます。</li>
+          <li>空欄にするとラベルは非表示になります。</li>
+        </ol>
+      </div>
+      <p class="description">※新着商品や期間限定アイテムの訴求に非常に効果的です。</p>
+    </section>
+
+    <!-- 7. 再入荷通知機能 -->
+    <section id="restock-notify">
+      <h2>7. 再入荷通知機能 [v3.11.2]</h2>
+      <p>売り切れ商品の在庫が復活した際に、希望するお客様へ自動でメールを送信できます。</p>
+      <div class="card">
+        <h4>📝 仕組みと活用方法</h4>
+        <ul style="padding-left:20px;">
+          <li><strong>お客様側の操作</strong>: 売り切れ商品に表示される「再入荷通知を受け取る」ボタンからメールアドレスを登録します。</li>
+          <li><strong>管理側の確認</strong>: 商品編集画面の「売り切れ設定」箇所に、現在何名が通知を待っているか表示されます。</li>
+          <li><strong>自動送信トリガー</strong>: 商品の在庫数を増やすか、「売り切れにする」のチェックを外して保存した瞬間に、登録者全員に通知メールが即座に一括送信されます。</li>
+        </ul>
+      </div>
+      <p class="description">※通知送信後は待機リストが自動的にリセットされます。機会損失を防ぎ、売上アップに直結する機能です。</p>
+    </section>
+
+    <!-- 8. 配送状況の追跡連携 -->
     <section id="tracking">
-      <h2>6. 配送状況の追跡連携 [v3.8.0]</h2>
+      <h2>8. 配送状況の追跡連携</h2>
       <p>送り状番号と配送業者を紐付けることで、購入者がワンクリックで追跡ページを確認できるようになります。</p>
       <div class="card">
         <h4>🔗 連携の仕組み</h4>
@@ -607,9 +641,9 @@
       </div>
     </section>
 
-    <!-- 7. 会員機能とマイページ -->
+    <!-- 8. 会員機能とマイページ -->
     <section id="member">
-      <h2>7. 会員機能とマイページ [v3.10.0]</h2>
+      <h2>8. 会員機能とマイページ [v3.10.0]</h2>
       <p>購入履歴の確認、配送先情報の管理、サブスクリプションの管理ができる統合マイページ機能です。</p>
 
       <div class="alert alert-success">
@@ -642,9 +676,9 @@
       <div class="shortcode">[ec_member_dashboard]</div>
     </section>
 
-    <!-- 7.5 SNSログイン連携 -->
+    <!-- 9. SNSログイン連携 -->
     <section id="sns-login">
-      <h2>会員特典: SNSログイン連携</h2>
+      <h2>9. SNSログイン連携</h2>
       <p>GoogleおよびLINEアカウントを使用して、ワンクリックでログイン・会員登録が可能です。</p>
 
       <div class="card">
@@ -662,9 +696,9 @@
       </div>
     </section>
 
-    <!-- 7.6 システムログの確認 -->
+    <!-- 10. システムログの確認 -->
     <section id="system-log">
-      <h2>システムログの確認 [v3.10.0]</h2>
+      <h2>10. システムログの確認</h2>
       <p>決済エラーやWebhookの失敗など、システムの稼働状況をリアルタイムで確認・管理できます。</p>
 
       <div class="card">
@@ -682,9 +716,9 @@
       </div>
     </section>
 
-    <!-- 7.7 会員規約（利用規約）の設定 -->
-    <section id="membership-terms">
-      <h2>7.7 会員規約（利用規約）の設定 [v3.10.0]</h2>
+    <!-- 11. 会員規約（利用規約）の設定 -->
+    <section id="membership-terms-display">
+      <h2>11. 会員規約（利用規約）の設定</h2>
       <p>会員登録や商品の購入に際して、お客様に同意いただく規約を管理・表示できます。</p>
 
       <div class="card">
@@ -710,9 +744,9 @@
       </div>
     </section>
 
-    <!-- 8. ステータス -->
+    <!-- 12. ステータス -->
     <section id="status">
-      <h2>8. 注文ステータスフロー</h2>
+      <h2>12. 注文ステータスフロー</h2>
       <table>
         <tr>
           <th>ステータス</th>
@@ -751,9 +785,9 @@
       </div>
     </section>
 
-    <!-- 9. 各種アクション操作 -->
+    <!-- 13. 各種アクション操作 -->
     <section id="actions">
-      <h2>9. 各種アクション操作</h2>
+      <h2>13. 各種アクション操作</h2>
 
       <div class="card">
         <h4><span class="btn-sample" style="color:#444;">編集</span> — 注文を編集</h4>
@@ -802,9 +836,9 @@
       </div>
     </section>
 
-    <!-- 10. クーポン管理 -->
+    <!-- 14. クーポン管理 -->
     <section id="coupon">
-      <h2>10. クーポン管理</h2>
+      <h2>14. クーポン管理</h2>
       <p>WordPress管理画面 → <strong>各種商品 → クーポン管理</strong> でクーポンを作成・管理できます。</p>
       
       <div class="card">
@@ -877,9 +911,9 @@
       </div>
     </section>
 
-    <!-- 12. 注文照会ページ -->
+    <!-- 16. 注文照会ページ -->
     <section id="inquiry">
-      <h2>12. 購入者向け注文照会ページ</h2>
+      <h2>16. 購入者向け注文照会ページ</h2>
       <p>購入者が自分で注文状況を確認できるページです。ショートコードを固定ページに設置するだけで動作します。</p>
 
       <h3>設置方法</h3>
@@ -931,9 +965,9 @@
       </div>
     </section>
 
-    <!-- 13. ダウンロード管理 -->
+    <!-- 17. ダウンロード管理 -->
     <section id="download">
-      <h2>13. ダウンロード管理</h2>
+      <h2>17. ダウンロード管理</h2>
       <p>ダウンロード版の購入の場合、リンクに有効期限と回数制限を設定できます。</p>
 
       <table>
@@ -959,9 +993,9 @@
       </div>
     </section>
 
-    <!-- 14. 注文データのCSV出力 -->
+    <!-- 18. 注文データのCSV出力 -->
     <section id="csv">
-      <h2>14. 受注データのCSVエクスポート</h2>
+      <h2>18. 受注データのCSVエクスポート</h2>
       <p>受注一覧の右上にある「💾 CSVエクスポート」ボタンをクリックすると、全注文データをCSVファイルでダウンロードできます。</p>
 
       <h3>CSVの項目</h3>
@@ -979,9 +1013,9 @@
       </div>
     </section>
 
-    <!-- 15. 在庫アラート機能 -->
+    <!-- 19. 在庫アラート機能 -->
     <section id="stock-alert">
-      <h2>15. 在庫アラート機能 [v3.7.1]</h2>
+      <h2>19. 在庫アラート機能</h2>
       <p>在庫切れによる販売機会の損失を防ぐため、在庫が少なくなった際に自動で管理者に通知する機能です。</p>
       
       <div class="card">
@@ -1000,9 +1034,9 @@
       </div>
     </section>
 
-    <!-- 16. 利用可能なショートコード一覧 -->
+    <!-- 20. 利用可能なショートコード一覧 -->
     <section id="shortcodes">
-      <h2>16. 利用可能なショートコード一覧</h2>
+      <h2>20. 利用可能なショートコード一覧</h2>
       <p>固定ページや投稿の本文に貼り付けて使用します。</p>
       <table>
         <tr>
@@ -1048,9 +1082,9 @@
       </table>
     </section>
 
-    <!-- 17. 会員規約（利用規約）の設定 [v3.10.0] -->
+    <!-- 21. 会員規約の表示・自動生成 -->
     <section id="membership-terms">
-      <h2>17. 会員規約（利用規約）の設定 [v3.10.0]</h2>
+      <h2>21. 会員規約の表示・自動生成</h2>
       <p>オンラインショップ運営に欠かせない会員規約を、簡単に管理・表示できる機能です。</p>
       
       <div class="card">
@@ -1073,9 +1107,9 @@
       </div>
     </section>
 
-    <!-- 18. セキュリティと信頼性 -->
+    <!-- 22. セキュリティと信頼性 -->
     <section id="security">
-      <h2>18. セキュリティと信頼性</h2>
+      <h2>22. セキュリティと信頼性</h2>
       <div class="card">
         <p>本プラグインは商用利用を前提として、以下のセキュリティ対策を講じています。</p>
         <ul style="padding-left:20px;">
@@ -1086,9 +1120,9 @@
       </div>
     </section>
 
-    <!-- 19. よくある質問 -->
+    <!-- 23. よくある質問 -->
     <section id="faq">
-      <h2>19. よくある質問</h2>
+      <h2>23. よくある質問</h2>
 
       <div class="card">
         <h4>Q. 購入者からメールが届いていないと言われた</h4>
@@ -1123,10 +1157,22 @@
       </div>
     </section>
 
+    <!-- 23. アップデート履歴 -->
+    <section id="changelog">
+      <h2>23. アップデート履歴</h2>
+      <ul>
+        <li><strong>v3.11.2</strong> - 再入荷通知機能の実装。売り切れ商品の在庫復活時に自動で登録者へメール通知。</li>
+        <li><strong>v3.11.1</strong> - 商品ラベルの色指定機能を追加。カラーピッカーとお気に入りボタンとの重なり調整。</li>
+        <li><strong>v3.11.0</strong> - 商品ラベル（リボン）機能の正式追加。</li>
+        <li><strong>v3.10.0</strong> - 会員規約（利用規約）自動生成機能の追加。ログインUIの最適化とSNSログインの優先表示。</li>
+        <li><strong>v3.9.0</strong> - インボイス制度対応（適格請求書発行事業者番号の設定機能）。税率別内訳の表示。</li>
+      </ul>
+    </section>
+
   </div>
 
   <footer>
-    <p>シンプルECプラグイン v3.10.0 &nbsp;|&nbsp; 管理マニュアル</p>
+    <p>シンプルECプラグイン v3.11.2 &nbsp;|&nbsp; 管理マニュアル</p>
   </footer>
 
 </body>

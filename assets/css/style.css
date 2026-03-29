@@ -775,7 +775,35 @@ body.admin-bar .photo-cart-indicator {
 	left: 0;
 	right: 0;
 	bottom: 0;
-	background: linear-gradient(rgba(255,255,255,0.1), rgba(255,255,255,0));
+	background: linear-gradient(rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0));
 	pointer-events: none;
+}
+
+/* --- v3.11.0 Product Label (Ribbon) --- */
+.pp-product-label {
+	position: absolute;
+	top: 12px;
+	left: -8px;
+	background: var(--label-color, #4f46e5);
+	color: #fff;
+	padding: 5px 15px;
+	font-size: 11px;
+	font-weight: 800;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	border-radius: 0 4px 4px 0;
+	box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.2);
+	z-index: 5;
+	pointer-events: none;
+}
+
+.pp-product-label::after {
+	content: "";
+	position: absolute;
+	top: 100%;
+	left: 0;
+	border-top: 8px solid var(--label-color, #3730a3);
+	border-left: 8px solid transparent;
+	filter: brightness(0.7);
 }
 

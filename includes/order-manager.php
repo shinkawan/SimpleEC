@@ -3755,3 +3755,57 @@ function photo_purchase_get_status_label($status) {
     );
     return $statuses[$status] ?? $status;
 }
+
+/**
+ * Send restock notifications to subscribed users
+ */
+function photo_purchase_send_restock_notifications($product_id)
+{
+    $emails = get_post_meta($product_id, '_photo_restock_emails', true);
+    if (empty($emails) || !is_array($emails)) {
+        return;
+    }
+
+    $url_mapping = get_post_meta($product_id, '_photo_restock_urls', true) ?: array();
+
+    $shop_name = get_option('photo_pp_seller_name');
+    if (empty($shop_name)) {
+        $shop_name = get_bloginfo('name');
+    }
+
+    $product_title = get_the_title($product_id);
+    $product_url = home_url();
+
+    $subject = '【' . $shop_name . '】再入荷のお知らせ：' . $product_title;
+    
+    foreach ($emails as $email) {
+        if (!is_email($email)) continue;
+
+        $message = $email . " 様\n\n";
+        $message .= "お待たせいたしました！お問い合わせいただいておりました以下の商品が再入荷いたしました。\n\n";
+        $message .= "■商品名　：" . $product_title . "\n";
+        
+        $base_url = $url_mapping[$email] ?? home_url('/');
+        $message .= "■商品URL ：" . add_query_arg('photo_id', $product_id, $base_url) . "\n\n";
+        $message .= "人気商品のため、お早めのご確認をおすすめいたします。\n\n";
+        $message .= "--------------------------------------------------\n";
+        $message .= $shop_name . "\n";
+        $message .= home_url() . "\n";
+
+        wp_mail($email, $subject, $message);
+    }
+
+    // Clear the notification list after sending
+    delete_post_meta($product_id, '_photo_restock_emails');
+    delete_post_meta($product_id, '_photo_restock_urls');
+}
+
+/**
+ * Prevent canonical redirects when photo_id is present
+ */
+add_filter('redirect_canonical', function($redirect_url, $requested_url) {
+    if (isset($_GET['photo_id']) || get_query_var('photo_id')) {
+        return false;
+    }
+    return $redirect_url;
+}, 10, 2);

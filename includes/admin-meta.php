@@ -86,15 +86,52 @@ function photo_purchase_meta_box_callback($post)
 	echo '<div>';
 	echo '<label for="photo_is_sold_out"><strong>' . __('売り切れ設定', 'photo-purchase') . '</strong></label><br>';
 	echo '<label><input type="checkbox" id="photo_is_sold_out" name="photo_is_sold_out" value="1" ' . checked($is_sold_out, '1', false) . '> ' . __('売り切れにする', 'photo-purchase') . '</label>';
+
+	// Show restock notification count
+	$restock_emails = get_post_meta($post->ID, '_photo_restock_emails', true) ?: array();
+	if (!empty($restock_emails) && is_array($restock_emails)) {
+		echo '<div style="background: #fff8e1; border-left: 4px solid #ffc107; padding: 12px; margin-top: 15px; border-radius: 4px;">';
+		echo '<span style="font-size: 1.2rem; margin-right: 8px;">📧</span>';
+		echo '<strong>' . sprintf(__('%d 名が入荷通知を待っています', 'photo-purchase'), count($restock_emails)) . '</strong>';
+		echo '<p style="font-size: 11px; color: #666; margin: 8px 0 0;">在庫を増やすか、売り切れチェックを外して保存すると自動的に通知が送信されます。</p>';
+		echo '</div>';
+	}
 	echo '<p class="description">チェックを入れるとフロントエンドで「売り切れ」と表示され、購入できなくなります。</p>';
 
-	echo '<hr style="margin: 10px 0; border: 0; border-top: 1px dashed #eee;">';
-	echo '<label for="photo_manage_stock"><strong>' . __('在庫管理', 'photo-purchase') . '</strong></label><br>';
-	echo '<label><input type="checkbox" id="photo_manage_stock" name="photo_manage_stock" value="1" ' . checked($manage_stock, '1', false) . '> ' . __('在庫管理を行う', 'photo-purchase') . '</label><br>';
-	echo '<label>' . __('在庫数', 'photo-purchase') . ': <input type="number" name="photo_stock_qty" value="' . esc_attr($stock_qty) . '" min="0" style="width:80px;"></label>';
+	echo '<div style="margin-top:15px; border-top:1px solid #eee; padding-top:15px; grid-column: span 3;">';
+	$product_label = get_post_meta($post->ID, '_photo_product_label', true);
+	$product_label_color = get_post_meta($post->ID, '_photo_product_label_color', true) ?: '#4f46e5';
+	echo '<label for="photo_product_label"><strong>' . __('商品ラベル (例: NEW, おすすめ)', 'photo-purchase') . '</strong></label><br>';
+	echo '<div style="display:flex; gap:10px; align-items:center; margin-top:5px; flex-wrap:wrap;">';
+	echo '<input type="text" id="photo_product_label" name="photo_product_label" value="' . esc_attr($product_label) . '" style="width:100%; max-width:250px; padding:8px; border-radius:5px; border:1px solid #ccc;" placeholder="空欄にすると表示されません">';
+	echo '<input type="color" id="photo_product_label_color" name="photo_product_label_color" value="' . esc_attr($product_label_color) . '" style="width:40px; height:38px; padding:2px; border:1px solid #ccc; border-radius:4px; cursor:pointer;" title="ラベルの色を選択">';
+	
+	// Preset colors
+	$presets = [
+		'#4f46e5' => 'Indigo',
+		'#dc2626' => 'Crimson',
+		'#059669' => 'Emerald',
+		'#d97706' => 'Gold',
+		'#7c3aed' => 'Purple',
+		'#1e293b' => 'Slate'
+	];
+	echo '<div style="display:flex; gap:5px;">';
+	foreach ($presets as $code => $name) {
+		echo '<button type="button" class="label-color-preset" data-color="' . $code . '" style="width:24px; height:24px; border-radius:50%; border:2px solid transparent; background:' . $code . '; cursor:pointer; box-shadow:0 0 0 1px #ddd;" title="' . $name . '"></button>';
+	}
+	echo '</div>';
 	echo '</div>';
 
-	echo '<input type="hidden" name="photo_price_2l" value="' . esc_attr($price_2l) . '">';
+	echo '<script>
+	document.querySelectorAll(".label-color-preset").forEach(btn => {
+		btn.addEventListener("click", function() {
+			document.getElementById("photo_product_label_color").value = this.dataset.color;
+		});
+	});
+	</script>';
+
+	echo '<p class="description">商品画像の左上に表示されるカスタムラベルの文言と色（背景）を変更できます。</p>';
+	echo '</div>';
 
 	echo '</div>'; // End grid
 
@@ -319,6 +356,12 @@ function photo_purchase_save_meta($post_id)
 	}
 	if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE)
 		return;
+
+	// Capture old status for restock notification
+	$old_is_sold_out = get_post_meta($post_id, '_photo_is_sold_out', true) === '1';
+	$old_manage_stock = get_post_meta($post_id, '_photo_manage_stock', true) === '1';
+	$old_stock_qty = intval(get_post_meta($post_id, '_photo_stock_qty', true));
+	$was_unavailable = $old_is_sold_out || ($old_manage_stock && $old_stock_qty <= 0);
 	if (!current_user_can('edit_post', $post_id))
 		return;
 
@@ -369,6 +412,26 @@ function photo_purchase_save_meta($post_id)
 		update_post_meta($post_id, '_photo_stock_qty', intval($_POST['photo_stock_qty']));
 	} else {
 		update_post_meta($post_id, '_photo_manage_stock', '0');
+	}
+
+	// Trigger restock notification if becomes available
+	$new_sold_out_flag = isset($_POST['photo_is_sold_out']) ? '1' : '0';
+	$new_manage_stock_flag = isset($_POST['photo_manage_stock']) ? '1' : '0';
+	$new_stock_qty_val = intval($_POST['photo_stock_qty'] ?? 0);
+	
+	$is_now_available = ($new_sold_out_flag === '0') && ($new_manage_stock_flag === '0' || $new_stock_qty_val > 0);
+
+	if ($was_unavailable && $is_now_available) {
+		if (function_exists('photo_purchase_send_restock_notifications')) {
+			photo_purchase_send_restock_notifications($post_id);
+		}
+	}
+
+	if (isset($_POST['photo_product_label'])) {
+		update_post_meta($post_id, '_photo_product_label', sanitize_text_field($_POST['photo_product_label']));
+	}
+	if (isset($_POST['photo_product_label_color'])) {
+		update_post_meta($post_id, '_photo_product_label_color', sanitize_hex_color($_POST['photo_product_label_color']));
 	}
 
 	// Save Custom Options
