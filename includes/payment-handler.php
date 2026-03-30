@@ -166,6 +166,11 @@ function photo_purchase_handle_multi_checkout()
                 $price = get_post_meta($photo_id, $price_key, true);
             }
 
+            // Member Discount check
+            $auth_email = photo_purchase_get_auth_email();
+            $discount_rate = intval(get_option('photo_pp_member_discount_rate', '0'));
+            $apply_discount = (!empty($auth_email) && $discount_rate > 0);
+
             $opt_price = 0;
             if (!empty($item['options']) && is_array($item['options'])) {
                 $db_options = get_post_meta($photo_id, '_photo_custom_options', true);
@@ -189,6 +194,11 @@ function photo_purchase_handle_multi_checkout()
                 unset($opt);
             }
             $final_unit_price = intval($price) + $opt_price;
+
+            // Apply member discount
+            if ($apply_discount && $format !== 'subscription') {
+                $final_unit_price = floor($final_unit_price * (1 - ($discount_rate / 100)));
+            }
 
             $line_items[] = array(
                 'price_data' => array(

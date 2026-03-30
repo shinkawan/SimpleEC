@@ -43,6 +43,10 @@ function photo_purchase_save_order($order_token, &$order_data)
     $rate_standard = intval(get_option('photo_pp_tax_rate_standard', '10'));
     $rate_reduced = intval(get_option('photo_pp_tax_rate_reduced', '8'));
 
+    $auth_email = photo_purchase_get_auth_email();
+    $discount_rate = intval(get_option('photo_pp_member_discount_rate', '0'));
+    $apply_discount = (!empty($auth_email) && $discount_rate > 0);
+
     $items_amount = 0;
     $has_physical = false;
     foreach ($order_data['items'] as &$item) {
@@ -90,10 +94,18 @@ function photo_purchase_save_order($order_token, &$order_data)
             }
             unset($opt);
         }
+        // Apply member discount
+        $final_unit_price = $base_price + $options_price;
+        if ($apply_discount && $item['format'] !== 'subscription') {
+            $final_unit_price = floor($final_unit_price * (1 - ($discount_rate / 100)));
+            $item['member_discount_applied'] = true;
+        }
+
         $item['price'] = $base_price; // Base price for display
         $item['options_total'] = $options_price;
+        $item['final_price'] = $final_unit_price; // Actual price charged per unit
 
-        $items_amount += ($base_price + $options_price) * intval($item['qty']);
+        $items_amount += $final_unit_price * intval($item['qty']);
     }
     unset($item);
 
@@ -359,15 +371,18 @@ function photo_purchase_send_admin_notification($token, $data, $total)
         $message .= "代引き手数料: ¥" . number_format($cod_fee) . "\n";
     }
 
-    // 割引情報の表示
-    $discount_val = 0;
-    if (!empty($data['coupon_info'])) {
-        $c_info = is_array($data['coupon_info']) ? $data['coupon_info'] : json_decode($data['coupon_info'], true);
-        if (!empty($c_info['code'])) {
-            $discount_val = intval($c_info['applied_discount'] ?? 0);
-            $message .= "割引 (" . $c_info['code'] . "): -" . number_format($discount_val) . " 円\n";
-        }
+    // 会員割引の表示
+    $member_discount_admin = 0;
+    foreach ($data['items'] as $item) {
+        $orig_u = intval($item['price'] ?? 0) + intval($item['options_total'] ?? 0);
+        $final_u = intval($item['final_price'] ?? $orig_u);
+        $member_discount_admin += ($orig_u - $final_u) * intval($item['qty'] ?? 1);
     }
+    if ($member_discount_admin > 0) {
+        $message .= "会員割引: -" . number_format($member_discount_admin) . " 円\n";
+    }
+
+    // クーポン割引情報の表示
 
     $message .= "合計（税込）: ¥" . number_format($total) . "\n";
 
@@ -507,6 +522,20 @@ function photo_purchase_send_buyer_notification($token, $data, $total)
         $coupon_info_data = is_array($coupon_raw) ? $coupon_raw : json_decode($coupon_raw, true);
     }
     
+    // 会員割引の集計
+    $member_discount_total = 0;
+    foreach ($data['items'] as $item) {
+        $orig_unit = intval($item['price'] ?? 0) + intval($item['options_total'] ?? 0);
+        $final_unit = intval($item['final_price'] ?? $orig_unit);
+        if ($orig_unit > $final_unit) {
+            $member_discount_total += ($orig_unit - $final_unit) * intval($item['qty'] ?? 1);
+        }
+    }
+
+    if ($member_discount_total > 0) {
+        $message .= "会員割引: -" . number_format($member_discount_total) . " 円\n";
+    }
+
     $discount_val = 0;
     if ($coupon_info_data && !empty($coupon_info_data['code'])) {
         $discount_val = intval($coupon_info_data['applied_discount'] ?? 0);
@@ -1935,6 +1964,23 @@ function photo_purchase_order_print_view($order_id, $type, $order_token = '')
                             <td style="text-align:right;">￥<?php echo number_format($saved_cod_fee); ?></td>
                         </tr>
                     <?php endif; ?>
+
+                    <?php 
+                    // 会員割引の集計 (印刷ビュー用)
+                    $print_member_discount = 0;
+                    foreach ($items as $item) {
+                        $orig_u = intval($item['price'] ?? 0) + intval($item['options_total'] ?? 0);
+                        $final_u = intval($item['final_price'] ?? $orig_u);
+                        $print_member_discount += ($orig_u - $final_u) * intval($item['qty'] ?? 1);
+                    }
+                    if ($print_member_discount > 0): ?>
+                        <tr>
+                            <td>会員特別割引</td>
+                            <td style="text-align:right;">-￥<?php echo number_format($print_member_discount); ?></td>
+                            <td style="text-align:center;">1</td>
+                            <td style="text-align:right;">-￥<?php echo number_format($print_member_discount); ?></td>
+                        </tr>
+                    <?php endif; ?>
                     
                     <?php if (!empty($order->coupon_info)): ?>
                         <?php $coupon_data = json_decode($order->coupon_info, true); ?>
@@ -2053,6 +2099,7 @@ function photo_purchase_export_orders_csv()
         '10%消費税額',
         '8%対象額（税込）',
         '8%消費税額',
+        '会員割引額',
         '支払い方法',
         'ステータス',
         '送り状番号',
@@ -2098,6 +2145,14 @@ function photo_purchase_export_orders_csv()
                 $label .= ' [' . implode(', ', $opt_names) . ']';
             }
             $item_details[] = $label;
+        }
+
+        // 会員割引の集計 (CSV用)
+        $member_discount_val = 0;
+        foreach ($items as $item) {
+            $orig_u = intval($item['price'] ?? 0) + intval($item['options_total'] ?? 0);
+            $final_u = intval($item['final_price'] ?? $orig_u);
+            $member_discount_val += ($orig_u - $final_u) * intval($item['qty'] ?? 1);
         }
 
         $coupon_code = '';
@@ -2186,6 +2241,7 @@ function photo_purchase_export_orders_csv()
             $tax_results[10]['tax'] ?? 0,
             $tax_results[8]['target'] ?? 0,
             $tax_results[8]['tax'] ?? 0,
+            $member_discount_val,
             $payment_lbl,
             $status_lbl,
             $order->tracking_number,
@@ -2713,12 +2769,24 @@ function photo_purchase_order_inquiry_shortcode()
                                 }
 
                                 $items_amount = intval($order->total_amount) - $shipping_fee - $cod_fee + $coupon_discount;
+                                
+                                // 会員割引額の算出
+                                $member_discount_inquiry = 0;
+                                foreach ($items as $item) {
+                                    $orig_u = intval($item['price'] ?? 0) + intval($item['options_total'] ?? 0);
+                                    $final_u = intval($item['final_price'] ?? $orig_u);
+                                    $member_discount_inquiry += ($orig_u - $final_u) * intval($item['qty'] ?? 1);
+                                }
+                                $orig_items_total = $items_amount + $member_discount_inquiry;
 
                                 // Tax Breakdown using common helper
                                 $tax_results = photo_purchase_get_tax_breakdown($items, $shipping_fee, $cod_fee, $coupon_discount);
 
                                 echo '【内訳】<br>';
-                                echo '商品: ¥' . number_format($items_amount);
+                                echo '商品: ¥' . number_format($orig_items_total);
+                                if ($member_discount_inquiry > 0) {
+                                    echo ' - 会員割引: ¥' . number_format($member_discount_inquiry);
+                                }
                                 if ($shipping_fee > 0) echo ' + 送料: ¥' . number_format($shipping_fee);
                                 if ($cod_fee > 0) echo ' + 代引き手数料: ¥' . number_format($cod_fee);
                                 if ($coupon_discount > 0) {
@@ -3094,6 +3162,21 @@ function photo_purchase_member_dashboard_shortcode($atts)
 
     <?php else: ?>
         <!-- ログイン済み: ダッシュボード表示 -->
+        <?php 
+        $is_member = is_user_logged_in();
+        $discount_rate = intval(get_option('photo_pp_member_discount_rate', '0'));
+        if ($is_member && $discount_rate > 0): ?>
+            <div class="member-status-banner">
+                <div style="background:rgba(255,255,255,0.2); width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center;">
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="white" stroke-width="2.5" fill="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                </div>
+                <div>
+                    <div style="font-size:13px; opacity:0.9; margin-bottom:2px;">MEMBER EXCLUSIVE</div>
+                    <div style="font-size:18px; font-weight:800;"><?php echo esc_html($discount_rate); ?>% 会員特別割引が適用中です</div>
+                </div>
+            </div>
+        <?php endif; ?>
+
         <header style="margin-bottom:32px; display:flex; justify-content:space-between; align-items:center; background:#fff; padding:24px; border-radius:20px; border:1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02);">
             <div style="display:flex; align-items:center; gap:16px;">
                 <div style="background:#f1f5f9; width:48px; height:48px; border-radius:12px; display:flex; align-items:center; justify-content:center; color:#64748b;">
@@ -3238,9 +3321,9 @@ function photo_purchase_member_dashboard_shortcode($atts)
                     $items_data = json_decode($order->order_items, true) ?: array();
                     $status_info = array(
                         'pending_payment' => array('label' => '入金待ち', 'color' => '#f59e0b', 'bg' => '#fef3c7'),
-                        'processing'      => array('label' => '準備中', 'color' => '#10b981', 'bg' => '#ecfdf5'),
-                        'completed'       => array('label' => '発送済み / 完了', 'color' => '#3b82f6', 'bg' => '#eff6ff'),
-                        'active'          => array('label' => 'サービス提供中', 'color' => '#7c3aed', 'bg' => '#f5f3ff'),
+                        'processing'      => array('label' => '支払い済み / 準備中', 'color' => '#10b981', 'bg' => '#ecfdf5'),
+                        'completed'       => array('label' => '発送済み / 完了', 'color' => '#4f46e5', 'bg' => '#eef2ff'),
+                        'active'          => array('label' => '有効 (サブスク)', 'color' => '#7c3aed', 'bg' => '#f5f3ff'),
                         'cancelled'       => array('label' => 'キャンセル', 'color' => '#ef4444', 'bg' => '#fef2f2'),
                     );
                     $current_status = $status_info[$order->status] ?? array('label' => $order->status, 'color' => '#64748b', 'bg' => '#f1f5f9');
@@ -3251,7 +3334,7 @@ function photo_purchase_member_dashboard_shortcode($atts)
                         $current_status['label'] = '継続中';
                     }
                 ?>
-                    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:20px; padding:28px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02); transition: transform 0.2s;">
+                    <div class="order-card" style="background:#fff; border:1px solid #e2e8f0; border-radius:20px; padding:28px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02); transition: transform 0.2s;">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
                             <div>
                                 <div style="font-family: 'JetBrains Mono', 'Courier New', monospace; font-size:16px; font-weight:bold; color:#1e293b; margin-bottom:4px; display:flex; align-items:center; gap:8px;">
@@ -3402,7 +3485,13 @@ function photo_purchase_member_dashboard_shortcode($atts)
                         <?php endif; ?>
 
                         <!-- Document Print Actions -->
-                        <div style="margin-top:20px; padding-top:20px; border-top: 1px solid #f1f5f9; display:flex; justify-content:flex-end; gap:12px;">
+                        <div style="margin-top:20px; padding-top:20px; border-top: 1px solid #f1f5f9; display:flex; justify-content:flex-end; gap:12px; flex-wrap:wrap;">
+                            <button class="buy-again-btn" 
+                                    data-items='<?php echo esc_attr(json_encode($items_data)); ?>'
+                                    style="display:inline-flex; align-items:center; gap:8px; background:#f0fdf4; color:#16a34a; text-decoration:none; padding:8px 20px; border-radius:10px; font-size:13px; font-weight:bold; border:1px solid #bbf7d0; cursor:pointer;">
+                                <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                                再購入（一括カート追加）
+                            </button>
                             <a href="<?php echo esc_url(add_query_arg(array('photo_purchase_action' => 'print_doc', 'order_id' => $order->id, 'type' => 'print_invoice', 'order_token' => $order->order_token), home_url('/'))); ?>" 
                                target="_blank" 
                                style="display:inline-flex; align-items:center; gap:8px; background:#fff; color:#475569; text-decoration:none; padding:8px 20px; border-radius:10px; font-size:13px; font-weight:bold; border:1px solid #e2e8f0;">
@@ -3555,8 +3644,9 @@ function photo_purchase_get_tax_breakdown($items, $shipping = 0, $cod = 0, $disc
         $rate = intval($item['tax_rate'] ?? $rate_standard);
         $price = intval($item['price'] ?? 0);
         $opts = intval($item['options_total'] ?? 0);
+        $final_price = intval($item['final_price'] ?? ($price + $opts));
         $qty = intval($item['qty'] ?? 1);
-        $subtotal = ($price + $opts) * $qty;
+        $subtotal = $final_price * $qty;
         
         if (!isset($breakdown[$rate])) $breakdown[$rate] = 0;
         $breakdown[$rate] += $subtotal;

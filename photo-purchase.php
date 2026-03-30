@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Simple EC
  * Description: 簡易的な写真・デジタルコンテンツ販売プラグイン。Stripe、PayPay、代引き、銀行振込に対応。
- * Version: 3.11.3
+ * Version: 3.12.5
  * Author: アートフレア株式会社
  * Author URI: https://www.artflair.co.jp/
  * Text Domain: photo-purchase
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define constants
-define('PHOTO_PURCHASE_VERSION', '3.11.3');
+define('PHOTO_PURCHASE_VERSION', '3.12.5');
 define('PHOTO_PURCHASE_PATH', plugin_dir_path(__FILE__));
 define('PHOTO_PURCHASE_URL', plugin_dir_url(__FILE__));
 
@@ -306,6 +306,8 @@ function photo_purchase_settings_page()
 			update_option('photo_pp_seller_name', sanitize_text_field($_POST['seller_name']));
 			update_option('photo_pp_seller_email', sanitize_email($_POST['seller_email']));
 			update_option('photo_pp_gallery_columns', $_POST['gallery_columns'] !== '' ? intval($_POST['gallery_columns']) : 4);
+			update_option('photo_pp_member_discount_rate', isset($_POST['member_discount_rate']) ? intval($_POST['member_discount_rate']) : 0);
+			update_option('photo_my_page_id', isset($_POST['my_page_id']) ? intval($_POST['my_page_id']) : 0);
 		} elseif ($active_tab == 'payment') {
 			update_option('photo_pp_stripe_publishable_key', sanitize_text_field($_POST['stripe_pk']));
 			update_option('photo_pp_stripe_secret_key', sanitize_text_field($_POST['stripe_sk']));
@@ -457,6 +459,30 @@ function photo_purchase_settings_page()
 							<input type="number" name="stock_threshold" id="stock_threshold"
 								value="<?php echo esc_attr(get_option('photo_pp_stock_threshold', '5')); ?>"
 								class="small-text"> 個以下で管理者に通知
+						</td>
+					</tr>
+					<tr>
+						<th><label for="member_discount_rate"><?php _e('会員割引率 (%)', 'photo-purchase'); ?></label></th>
+						<td>
+							<input type="number" name="member_discount_rate" id="member_discount_rate"
+								value="<?php echo esc_attr(get_option('photo_pp_member_discount_rate', '0')); ?>"
+								class="small-text" min="0" max="100"> %
+							<p class="description"><?php _e('ログイン中の会員に自動適用される割引率です。0で無効。', 'photo-purchase'); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th><label for="my_page_id"><?php _e('マイページ（ダッシュボード）', 'photo-purchase'); ?></label></th>
+						<td>
+							<?php
+							wp_dropdown_pages(array(
+								'name'              => 'my_page_id',
+								'id'                => 'my_page_id',
+								'selected'          => get_option('photo_my_page_id'),
+								'show_option_none'  => '-- ' . __('自動検索', 'photo-purchase') . ' --',
+								'option_none_value' => '0',
+							));
+							?>
+							<p class="description"><?php echo sprintf(__('ショートコード %s を設置した固定ページを選択してください。', 'photo-purchase'), '<code>[ec_member_dashboard]</code>'); ?></p>
 						</td>
 					</tr>
 				</table>

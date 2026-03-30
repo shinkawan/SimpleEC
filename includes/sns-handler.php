@@ -200,24 +200,27 @@ add_action('init', 'photo_purchase_handle_sns_callback');
  * Get Dashboard URL (My Page)
  */
 function photo_purchase_get_dashboard_url() {
-    // Search for page with [ec_member_dashboard] shortcode
-    $pages = get_posts(array(
-        'post_type' => 'page',
-        'content'   => '[ec_member_dashboard]',
-        'posts_per_page' => 1,
-    ));
-    
-    if (!empty($pages)) {
-        return get_permalink($pages[0]->ID);
-    }
-    
-    // Alternative: search by meta if set by our activation logic
+    // 1. すでにIDが設定されている場合はそれを優先
     $page_id = get_option('photo_my_page_id');
     if ($page_id && get_post($page_id)) {
         return get_permalink($page_id);
     }
+
+    // 2. ショートコード [ec_member_dashboard] を含むページをキーワード検索
+    $pages = get_posts(array(
+        'post_type'      => 'page',
+        'post_status'    => 'publish',
+        's'              => '[ec_member_dashboard]',
+        'posts_per_page' => 1,
+    ));
     
-    return home_url('/dashboard/'); // Fallback
+    if (!empty($pages)) {
+        // 見つかった場合はIDを保存して次回から高速化
+        update_option('photo_my_page_id', $pages[0]->ID);
+        return get_permalink($pages[0]->ID);
+    }
+    
+    return home_url('/dashboard/'); // フォールバック
 }
 
 /**

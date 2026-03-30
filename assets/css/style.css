@@ -650,6 +650,36 @@ body.admin-bar .photo-cart-indicator {
 	letter-spacing: -0.05em;
 }
 
+.photo-price-original {
+    text-decoration: line-through;
+    color: #94a3b8;
+    font-size: 0.85rem;
+    font-weight: 500;
+    margin-right: 8px;
+    opacity: 0.8;
+}
+
+.photo-price-member {
+    color: #4f46e5; /* Primary Indigo for premium feel */
+    font-weight: 900 !important;
+}
+
+.member-discount-badge {
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    color: #fff;
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 20px;
+    margin-left: 8px;
+    font-weight: 800;
+    vertical-align: middle;
+    display: inline-block;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(79, 70, 229, 0.2);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
 .gift-wrapping-option {
 	border: 1px dashed rgba(var(--pp-primary-rgb), 0.3);
 	transition: all 0.3s ease;
@@ -805,5 +835,33 @@ body.admin-bar .photo-cart-indicator {
 	border-top: 8px solid var(--label-color, #3730a3);
 	border-left: 8px solid transparent;
 	filter: brightness(0.7);
+}
+
+/* Dashboard Specific Enhancements */
+.photo-purchase-portal .order-card {
+    transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+
+.photo-purchase-portal .order-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 20px -5px rgba(0,0,0,0.1);
+    border-color: #cbd5e1;
+}
+
+.member-status-banner {
+    background: linear-gradient(90deg, #4f46e5 0%, #7c3aed 100%);
+    color: #fff;
+    padding: 18px 24px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 35px;
+    font-weight: 700;
+    box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.3);
+}
+
+.member-status-banner svg {
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
 }
 

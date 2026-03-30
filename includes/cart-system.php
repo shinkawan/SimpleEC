@@ -13,9 +13,12 @@ if (!defined('ABSPATH')) {
 function photo_purchase_cart_scripts()
 {
     wp_enqueue_script('photo-purchase-cart', PHOTO_PURCHASE_URL . 'assets/js/cart.js', array('jquery'), PHOTO_PURCHASE_VERSION, true);
+    $auth_email = photo_purchase_get_auth_email();
     wp_localize_script('photo-purchase-cart', 'photoPurchase', array(
         'ajax_url' => admin_url('admin-ajax.php'),
         'nonce' => wp_create_nonce('photo_purchase_nonce'),
+        'is_logged_in' => !empty($auth_email),
+        'member_discount_rate' => intval(get_option('photo_pp_member_discount_rate', '0')),
         'labels' => array(
             'digital' => __('ダウンロード', 'photo-purchase'),
             'l_size' => __('配送品', 'photo-purchase'),
@@ -50,6 +53,10 @@ function photo_purchase_get_cart_details()
     $cart_items = isset($_POST['cart']) ? $_POST['cart'] : array();
     $data = array();
 
+	$auth_email = photo_purchase_get_auth_email();
+	$discount_rate = intval(get_option('photo_pp_member_discount_rate', '0'));
+	$apply_discount = (!empty($auth_email) && $discount_rate > 0);
+
 	if (!empty($cart_items)) {
 		$enable_digital = get_option('photo_pp_enable_digital_sales', '1');
 
@@ -80,11 +87,17 @@ function photo_purchase_get_cart_details()
 
 			$sub_requires_shipping = get_post_meta($id, '_photo_sub_requires_shipping', true) === '1';
 
+			$price_val = intval($price);
+			if ($apply_discount && $format !== 'subscription') {
+				$price_val = floor($price_val * (1 - ($discount_rate / 100)));
+			}
+
 			$data[] = array(
 				'id' => $id,
 				'format' => $format,
 				'title' => get_the_title($id),
-				'price' => intval($price),
+				'price' => $price_val,
+				'original_price' => intval($price),
 				'thumb' => get_the_post_thumbnail($id, array(50, 50), array('style' => 'border-radius:4px;')),
 				'sub_requires_shipping' => $sub_requires_shipping,
 			);

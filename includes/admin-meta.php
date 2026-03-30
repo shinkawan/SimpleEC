@@ -98,6 +98,28 @@ function photo_purchase_meta_box_callback($post)
 	}
 	echo '<p class="description">チェックを入れるとフロントエンドで「売り切れ」と表示され、購入できなくなります。</p>';
 
+	// --- Inventory Management Settings (v3.12.3 Restore) ---
+	echo '<div style="margin-top:15px; padding-top:10px; border-top:1px dashed #ddd;">';
+	echo '<label><input type="checkbox" id="photo_manage_stock" name="photo_manage_stock" value="1" ' . checked($manage_stock, '1', false) . '> <strong>' . __('在庫管理を行う', 'photo-purchase') . '</strong></label>';
+	echo '<div id="stock_qty_wrap" style="margin-top:10px; padding:10px; background:#fff; border:1px solid #ddd; border-radius:4px; max-width:200px; ' . ($manage_stock === '1' ? '' : 'display:none;') . '">';
+	echo '<label for="photo_stock_qty">' . __('現在の在庫数:', 'photo-purchase') . '</label><br>';
+	echo '<input type="number" id="photo_stock_qty" name="photo_stock_qty" value="' . esc_attr($stock_qty) . '" min="0" step="1" style="width:100px;">';
+	echo '</div>';
+    
+	echo '<script>
+	jQuery(document).ready(function($) {
+		$("#photo_manage_stock").change(function() {
+			if ($(this).is(":checked")) {
+				$("#stock_qty_wrap").slideDown(200);
+			} else {
+				$("#stock_qty_wrap").slideUp(200);
+			}
+		});
+	});
+	</script>';
+	echo '</div>';
+	echo '</div>'; // End Sold Out Setting div (Line 86)
+
 	echo '<div style="margin-top:15px; border-top:1px solid #eee; padding-top:15px; grid-column: span 3;">';
 	$product_label = get_post_meta($post->ID, '_photo_product_label', true);
 	$product_label_color = get_post_meta($post->ID, '_photo_product_label_color', true) ?: '#4f46e5';

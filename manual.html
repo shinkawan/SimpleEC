@@ -319,7 +319,7 @@
   <header>
     <h1>🛒シンプルECプラグイン</h1>
     <p>管理者・オーナー向けマニュアル</p>
-    <div class="version-badge">v3.11.0 (商品ラベル・会員規約・OTP認証・SNS切替・インボイス搭載)</div>
+    <div class="version-badge">v3.12.2 (会員割引・再購入・ディープリンク・再入荷通知・商品ラベル・会員規約・OTP認証・インボイス・マイページ詳細設定)</div>
   </header>
 
   <div class="container">
@@ -335,22 +335,25 @@
         <li><a href="#order">5. 注文管理（受注一覧）</a></li>
         <li><a href="#product-labels">6. 商品ラベル（リボン）の設定 [v3.11.0]</a></li>
         <li><a href="#tracking">7. 配送状況の追跡連携</a></li>
-        <li><a href="#member">8. 会員機能とマイページ</a></li>
+        <li><a href="#member">8. 会員機能・マイページ・会員割引</a></li>
         <li><a href="#sns-login">9. SNSログイン連携 (Google / LINE)</a></li>
         <li><a href="#system-log">10. システムログの確認</a></li>
         <li><a href="#membership-terms-display">11. 会員規約（利用規約）の設定</a></li>
-        <li><a href="#status">12. 注文ステータスフロー</a></li>
-        <li><a href="#actions">13. 各種アクション操作</a></li>
+        <li><a href="#buy-again">12. 再購入（リピート購入）機能 [v3.12.0]</a></li>
+        <li><a href="#status">13. 注文ステータスフロー</a></li>
+        <li><a href="#actions">14. 各種アクション操作</a></li>
         <li><a href="#coupon">14. クーポン管理</a></li>
         <li><a href="#subscription">15. サブスクリプション機能</a></li>
         <li><a href="#inquiry">16. 購入者向け注文照会ページ</a></li>
         <li><a href="#download">17. ダウンロード管理</a></li>
         <li><a href="#csv">18. 受注データのCSV出力</a></li>
         <li><a href="#stock-alert">19. 在庫アラート機能</a></li>
-        <li><a href="#shortcodes">20. 利用可能なショートコード一覧</a></li>
-        <li><a href="#security">21. セキュリティと信頼性</a></li>
-        <li><a href="#faq">22. よくある質問</a></li>
-        <li><a href="#changelog">23. アップデート履歴</a></li>
+        <li><a href="#deep-link">20. ディープリンク機能（特定商品への直リンク） [v3.11.3]</a></li>
+        <li><a href="#shortcodes">21. 利用可能なショートコード一覧</a></li>
+        <li><a href="#membership-terms">22. 会員規約の表示・自動生成</a></li>
+        <li><a href="#security">23. セキュリティと信頼性</a></li>
+        <li><a href="#faq">24. よくある質問</a></li>
+        <li><a href="#changelog">25. アップデート履歴</a></li>
       </ol>
     </nav>
 
@@ -405,6 +408,14 @@
             <td>在庫アラート</td>
             <td>設定した在庫数を下回った際に管理者にメール通知</td>
           </tr>
+          <tr>
+            <td>会員割引</td>
+            <td>ログイン中の会員に対して自動的に一律割引を適用</td>
+          </tr>
+          <tr>
+            <td>再購入</td>
+            <td>過去の注文履歴からワンクリックでカートに追加（リピート促進）</td>
+          </tr>
         </table>
       </div>
     </section>
@@ -422,7 +433,7 @@
           <th>説明</th>
         </tr>
         <tr>
-          <td rowspan="4"><strong>一般設定</strong></td>
+          <td rowspan="6"><strong>一般設定</strong></td>
           <td>受注通知メール送信先</td>
           <td>新しい注文が入った際に通知を受け取るメールアドレスを入力します。</td>
         </tr>
@@ -437,6 +448,14 @@
         <tr>
           <td>在庫アラートのしきい値</td>
           <td>在庫がこの数値を下回った際に管理者にアラートメールを送信します。</td>
+        </tr>
+        <tr>
+          <td>会員割引率 (%)</td>
+          <td>会員ログイン時に適用する割引率を設定します（例: 10）。0で無効。</td>
+        </tr>
+        <tr>
+          <td>マイページ設定</td>
+          <td><code>[ec_member_dashboard]</code> を設置した固定ページを選択します。<strong>[v3.12.2]</strong></td>
         </tr>
         
         <tr>
@@ -620,6 +639,7 @@
           <li><strong>お客様側の操作</strong>: 売り切れ商品に表示される「再入荷通知を受け取る」ボタンからメールアドレスを登録します。</li>
           <li><strong>管理側の確認</strong>: 商品編集画面の「売り切れ設定」箇所に、現在何名が通知を待っているか表示されます。</li>
           <li><strong>自動送信トリガー</strong>: 商品の在庫数を増やすか、「売り切れにする」のチェックを外して保存した瞬間に、登録者全員に通知メールが即座に一括送信されます。</li>
+          <li><strong>[v3.11.3] 高精度なリンク</strong>: 通知メール内の「商品を確認する」ボタンは、お客様が登録を行った際のギャラリーURL（例: サブページ <code>/ndp/</code> 等）を記憶して生成されるため、迷わず購入ページへ誘導できます。</li>
         </ul>
       </div>
       <p class="description">※通知送信後は待機リストが自動的にリセットされます。機会損失を防ぎ、売上アップに直結する機能です。</p>
@@ -671,9 +691,39 @@
         </ul>
       </div>
 
-      <h3>マイページの設置方法</h3>
-      <p>固定ページを新規作成し、以下のショートコードを本文に貼り付けてください。</p>
-      <div class="shortcode">[ec_member_dashboard]</div>
+    <!-- 会員割引の説明 -->
+    <section id="member-discount">
+      <h3>💎 会員限定割引 [v3.12.0]</h3>
+      <p>特定の会員（ログインユーザー）に対して、ショップ全体の商品を自動的に割引価格で提供する機能です。</p>
+      <div class="card">
+        <h4>✨ プレミアムな表示と自動計算</h4>
+        <ul style="padding-left:20px;">
+          <li><strong>一律割引</strong>: 設定した割引率（%）が、サブスクを除くすべての商品に自動適用されます。</li>
+          <li><strong>プレミアムバッジ</strong>: ログインユーザーには、**専用のグラデーションバッジ**（インディゴ〜パープル）が表示され、特別感を演出します。</li>
+          <li><strong>打ち消し線表示</strong>: 元の価格に打ち消し線を引き、その隣に目立つ会員価格を自動で並記します。</li>
+          <li><strong>リアルタイム反映</strong>: 商品詳細だけでなく、カートドロワーやチェックアウト画面でも常に割引後の最終金額が表示されます。</li>
+        </ul>
+      </div>
+      <div class="alert alert-info">
+        💡 <strong>運営のヒント</strong>: マイページには「会員割引適用中」の専用バナーが表示され、会員であるメリットを常に意識させることができます。
+      </div>
+    </section>
+
+    <!-- 12. 再購入（リピート購入）機能 -->
+    <section id="buy-again">
+      <h2>12. 再購入（リピート購入）機能 [v3.12.0]</h2>
+      <p>過去に購入した商品を、マイページからワンクリックで現在のカートに追加できるリピート促進機能です。</p>
+      <div class="card">
+        <h4>📦 数量の自動統合プロセスの追加</h4>
+        <ul style="padding-left:20px;">
+          <li><strong>「再購入」ボタン</strong>: 会員マイページの各注文履歴カードに表示されます。</li>
+          <li><strong>重複商品の統合（マージ）</strong>: カートにすでに同じ商品が入っている場合、自動的に**既存の数量に追加（マージ）**されるため、カート内が重複した商品で溢れるのを防ぎます。</li>
+          <li><strong>スマートなフィードバック</strong>: ボタンを押すと即座に「✅ X個追加しました」とボタン上に表示され、自動的にカートドロワーが展開します。</li>
+        </ul>
+      </div>
+      <div class="alert alert-success">
+        ✅ <strong>時短体験</strong>: 消耗品やお気に入りのアイテムを「以前と同じ条件（オプション等）」で即座にカートへ入れることができ、チェックアウトまでの工数を最小限に抑えます。
+      </div>
     </section>
 
     <!-- 9. SNSログイン連携 -->
@@ -1034,9 +1084,37 @@
       </div>
     </section>
 
-    <!-- 20. 利用可能なショートコード一覧 -->
+    <!-- 20. ディープリンク機能 -->
+    <section id="deep-link">
+      <h2>20. ディープリンク機能（特定商品への直リンク） [v3.11.3]</h2>
+      <p>SNSやメルマガから、特定の商品の「詳細画面」を開いた状態で直接案内できる機能です。</p>
+      
+      <div class="card">
+        <h4>🔗 リンクの形式</h4>
+        <p>ギャラリーが設置されているページのURLの末尾に <code>?photo_id=商品ID</code> を付与します。</p>
+        <div class="shortcode" style="background:#f1f5f9; color:#334155; border:1px solid #e2e8f0;">
+          https://example.com/gallery/<strong>?photo_id=123</strong>
+        </div>
+      </div>
+
+      <div class="card">
+        <h4>✨ 動作の仕組み</h4>
+        <ul style="padding-left:20px;">
+          <li><strong>自動オープン</strong>: このリンクを踏んでページを開くと、該当商品の詳細モーダル（クイックビュー）が自動的に開きます。</li>
+          <li><strong>自動スクロール</strong>: 商品がギャラリーの下の方にあっても、開いた瞬間にその商品の位置までスムーズにスクロールします。</li>
+          <li><strong>SEOとリダイレクトへの配慮</strong>: WordPress標準の「正規URLリダイレクト」に干渉せず、サブページ（例: <code>/special-event/</code>）でも正しく動作するよう最適化されています。</li>
+        </ul>
+      </div>
+      
+      <div class="alert alert-info">
+        <strong>💡 商品IDの確認方法</strong><br>
+        「販売商品」一覧画面で、商品名にマウスを合わせると表示される「ID: 123」という数値が商品IDです。
+      </div>
+    </section>
+
+    <!-- 21. 利用可能なショートコード一覧 -->
     <section id="shortcodes">
-      <h2>20. 利用可能なショートコード一覧</h2>
+      <h2>21. 利用可能なショートコード一覧</h2>
       <p>固定ページや投稿の本文に貼り付けて使用します。</p>
       <table>
         <tr>
@@ -1082,9 +1160,9 @@
       </table>
     </section>
 
-    <!-- 21. 会員規約の表示・自動生成 -->
+    <!-- 22. 会員規約の表示・自動生成 -->
     <section id="membership-terms">
-      <h2>21. 会員規約の表示・自動生成</h2>
+      <h2>22. 会員規約の表示・自動生成</h2>
       <p>オンラインショップ運営に欠かせない会員規約を、簡単に管理・表示できる機能です。</p>
       
       <div class="card">
@@ -1107,9 +1185,9 @@
       </div>
     </section>
 
-    <!-- 22. セキュリティと信頼性 -->
+    <!-- 23. セキュリティと信頼性 -->
     <section id="security">
-      <h2>22. セキュリティと信頼性</h2>
+      <h2>23. セキュリティと信頼性</h2>
       <div class="card">
         <p>本プラグインは商用利用を前提として、以下のセキュリティ対策を講じています。</p>
         <ul style="padding-left:20px;">
@@ -1120,9 +1198,9 @@
       </div>
     </section>
 
-    <!-- 23. よくある質問 -->
+    <!-- 24. よくある質問 -->
     <section id="faq">
-      <h2>23. よくある質問</h2>
+      <h2>24. よくある質問</h2>
 
       <div class="card">
         <h4>Q. 購入者からメールが届いていないと言われた</h4>
@@ -1157,9 +1235,9 @@
       </div>
     </section>
 
-    <!-- 23. アップデート履歴 -->
+    <!-- 25. アップデート履歴 -->
     <section id="changelog">
-      <h2>23. アップデート履歴</h2>
+      <h2>25. アップデート履歴</h2>
       <ul>
         <li><strong>v3.11.3</strong> - ディープリンク（?photo_id=）のリダイレクト不具合修正。再入荷通知メールのリンク精度向上（登録元のギャラリーURLを反映）。</li>
         <li><strong>v3.11.2</strong> - 再入荷通知機能の実装。売り切れ商品の在庫復活時に自動で登録者へメール通知。</li>
