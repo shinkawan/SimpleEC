@@ -319,7 +319,7 @@
   <header>
     <h1>🛒シンプルECプラグイン</h1>
     <p>管理者・オーナー向けマニュアル</p>
-    <div class="version-badge">v3.12.5 (会員割引・全域整合性統合・再購入・ディープリンク・再入荷通知・商品ラベル・会員規約・インボイス・マイページ詳細設定)</div>
+    <div class="version-badge">v3.12.5</div>
   </header>
 
   <div class="container">
@@ -457,7 +457,7 @@
           <td>マイページ設定</td>
           <td><code>[ec_member_dashboard]</code> を設置した固定ページを選択します。<strong>[v3.12.2]</strong></td>
         </tr>
-        
+
         <tr>
           <td rowspan="4"><strong>決済設定</strong></td>
           <td>利用を許可する決済</td>
@@ -579,7 +579,7 @@
     <section id="order">
       <h2>5. 注文管理（受注一覧）</h2>
       <p>WordPress管理画面 → <strong>各種商品 → 受注一覧</strong> で全注文を管理します。</p>
-      
+
       <div class="card">
         <h4>📋 注文のフィルタリング</h4>
         <p>上部のタブで表示する注文を切り替えられます。</p>
@@ -639,7 +639,8 @@
           <li><strong>お客様側の操作</strong>: 売り切れ商品に表示される「再入荷通知を受け取る」ボタンからメールアドレスを登録します。</li>
           <li><strong>管理側の確認</strong>: 商品編集画面の「売り切れ設定」箇所に、現在何名が通知を待っているか表示されます。</li>
           <li><strong>自動送信トリガー</strong>: 商品の在庫数を増やすか、「売り切れにする」のチェックを外して保存した瞬間に、登録者全員に通知メールが即座に一括送信されます。</li>
-          <li><strong>[v3.11.3] 高精度なリンク</strong>: 通知メール内の「商品を確認する」ボタンは、お客様が登録を行った際のギャラリーURL（例: サブページ <code>/ndp/</code> 等）を記憶して生成されるため、迷わず購入ページへ誘導できます。</li>
+          <li><strong>[v3.11.3] 高精度なリンク</strong>: 通知メール内の「商品を確認する」ボタンは、お客様が登録を行った際のギャラリーURL（例: サブページ <code>/ndp/</code>
+            等）を記憶して生成されるため、迷わず購入ページへ誘導できます。</li>
         </ul>
       </div>
       <p class="description">※通知送信後は待機リストが自動的にリセットされます。機会損失を防ぎ、売上アップに直結する機能です。</p>
@@ -670,7 +671,7 @@
         🛡️ <strong>パスワード不要の安全なログイン (OTP)</strong><br>
         セキュリティ向上のため、パスワードの設定・管理を完全に廃止しました。登録メールアドレスに届く <strong>「6桁の認証コード（ワンタイムパスワード）」</strong> を入力するだけで、安全かつ簡単にログインできます。
       </div>
-      
+
       <div class="card">
         <h4>👤 会員情報の自動保存と活用</h4>
         <p>ログイン状態で商品を購入すると、入力した配送先情報（住所・電話番号など）が自動的に会員情報として保存されます。</p>
@@ -691,564 +692,581 @@
         </ul>
       </div>
 
-    <!-- 会員割引の説明 -->
-    <section id="member-discount">
-      <h3>💎 会員限定割引 [v3.12.0]</h3>
-      <p>特定の会員（ログインユーザー）に対して、ショップ全体の商品を自動的に割引価格で提供する機能です。</p>
-      <div class="card">
-        <h4>✨ プレミアムな表示と自動計算</h4>
-        <ul style="padding-left:20px;">
-          <li><strong>一律割引</strong>: 設定した割引率（%）が、サブスクを除くすべての商品に自動適用されます。</li>
-          <li><strong>プレミアムバッジ</strong>: ログインユーザーには、**専用のグラデーションバッジ**（インディゴ〜パープル）が表示され、特別感を演出します。</li>
-          <li><strong>打ち消し線表示</strong>: 元の価格に打ち消し線を引き、その隣に目立つ会員価格を自動で並記します。</li>
-          <li><strong>リアルタイム反映</strong>: 商品詳細だけでなく、カートドロワーやチェックアウト画面でも常に割引後の最終金額が表示されます。</li>
-          <li><strong>システム全域への統合 [v3.12.5]</strong>: 購入者へのメール、納品書、領収書、管理用CSV、およびマイページ履歴のすべてにおいて「会員割引額」が明記され、計算不整合が解消されました。</li>
-        </ul>
-      </div>
-      <div class="alert alert-info">
-        💡 <strong>運営のヒント</strong>: マイページには「会員割引適用中」の専用バナーが表示され、会員であるメリットを常に意識させることができます。
-      </div>
-    </section>
-
-    <!-- 12. 再購入（リピート購入）機能 -->
-    <section id="buy-again">
-      <h2>12. 再購入（リピート購入）機能 [v3.12.0]</h2>
-      <p>過去に購入した商品を、マイページからワンクリックで現在のカートに追加できるリピート促進機能です。</p>
-      <div class="card">
-        <h4>📦 数量の自動統合プロセスの追加</h4>
-        <ul style="padding-left:20px;">
-          <li><strong>「再購入」ボタン</strong>: 会員マイページの各注文履歴カードに表示されます。</li>
-          <li><strong>重複商品の統合（マージ）</strong>: カートにすでに同じ商品が入っている場合、自動的に**既存の数量に追加（マージ）**されるため、カート内が重複した商品で溢れるのを防ぎます。</li>
-          <li><strong>スマートなフィードバック</strong>: ボタンを押すと即座に「✅ X個追加しました」とボタン上に表示され、自動的にカートドロワーが展開します。</li>
-        </ul>
-      </div>
-      <div class="alert alert-success">
-        ✅ <strong>時短体験</strong>: 消耗品やお気に入りのアイテムを「以前と同じ条件（オプション等）」で即座にカートへ入れることができ、チェックアウトまでの工数を最小限に抑えます。
-      </div>
-    </section>
-
-    <!-- 9. SNSログイン連携 -->
-    <section id="sns-login">
-      <h2>9. SNSログイン連携</h2>
-      <p>GoogleおよびLINEアカウントを使用して、ワンクリックでログイン・会員登録が可能です。</p>
-
-      <div class="card">
-        <h4>🛠️ 管理者側の設定手順</h4>
-        <ol style="padding-left:20px; font-size:0.95rem;">
-          <li><strong>各種設定 → SNS連携</strong> タブを開きます。</li>
-          <li><strong>SNSログインを有効にする</strong> チェックボックスで、機能全体のON/OFFを切り替えられます。</li>
-          <li>Google Cloud Console または LINE Developers で作成した <strong>クライアントID</strong> と <strong>クライアントシークレット</strong> を入力します。</li>
-          <li>設定画面に表示されている「コールバックURL」を、各SNS側の設定（承認済みのリダイレクトURI）に登録してください。</li>
-        </ol>
-      </div>
-
-      <div class="alert alert-info">
-        💡 <strong>シンプルな会員登録</strong>: 初めてSNSでログインした際、自動的にWordPressアカウントが作成されます（メールアドレスが連携されます）。
-      </div>
-    </section>
-
-    <!-- 10. システムログの確認 -->
-    <section id="system-log">
-      <h2>10. システムログの確認</h2>
-      <p>決済エラーやWebhookの失敗など、システムの稼働状況をリアルタイムで確認・管理できます。</p>
-
-      <div class="card">
-        <h4>📋 ログの閲覧方法</h4>
-        <p>WordPressメニュー：<strong>各種商品 → システムログ</strong> を開きます。</p>
-        <ul style="padding-left:20px;">
-          <li><strong>最新100件を表示</strong>: 発生日時、エラーレベル（ERROR/INFOなど）、メッセージ、および詳細なデータが一覧で表示されます。</li>
-          <li><strong>エラーの特定</strong>: StripeのWebhookが認証できなかった場合や、メール送信に失敗した際などの原因調査に役立ちます。</li>
-          <li><strong>ログの消去</strong>: 定期的に「ログをすべて消去」ボタンでデータをリセットできます（最新500件を超えると自動的に古いものから削除されるため、肥大化の心配はありません）。</li>
-        </ul>
-      </div>
-
-      <div class="alert alert-info">
-        💡 <strong>「ログはありません」と表示される場合</strong>: システムが正常に稼働し、エラーが一度も発生していない状態です。エラーが発生した際のみ記録されます。
-      </div>
-    </section>
-
-    <!-- 11. 会員規約（利用規約）の設定 -->
-    <section id="membership-terms-display">
-      <h2>11. 会員規約（利用規約）の設定</h2>
-      <p>会員登録や商品の購入に際して、お客様に同意いただく規約を管理・表示できます。</p>
-
-      <div class="card">
-        <h4>📋 設定と表示の手順</h4>
-        <ol style="padding-left:20px; font-size:0.95rem;">
-          <li><strong>各種設定 → 会員規約</strong> タブを開きます。</li>
-          <li>規約の本文を入力し「設定を保存」をクリックしてください。
-            <ul>
-              <li><strong>ショップ名の自動反映</strong>: 本文中に <code>[ショップ名]</code> または <code>[ec_shop_name]</code> と記述すると、WordPressの「サービス名（サイト名）」が自動的に挿入されます。</li>
-              <li>日本語のショートコードが不安な場合は、英数表記の <code>[ec_shop_name]</code> をご利用ください。どちらも同じ動作をします。</li>
-              <li>HTMLタグ（p, br, strong等）が使用可能です。</li>
-            </ul>
-          </li>
-          <li><strong>固定ページの自動生成</strong>: プラグインのインストール・有効化時に、<code>[ec_membership_terms]</code> が配置された「会員規約」固定ページが自動的に作成されています。</li>
-          <li>もしページを削除してしまった場合は、再度固定ページを作成し、以下のショートコードを貼り付けてください。
-            <div class="shortcode" style="margin-top:10px;">[ec_membership_terms]</div>
-          </li>
-        </ol>
-      </div>
-
-      <div class="alert alert-info">
-        💡 <strong>同意の仕組み</strong>: Simple ECでは、ユーザーの利便性を考慮し「ログインまたは注文確定を行う＝規約に同意した」とみなす法的構成を採用しています。ログインフォームや注文ボタン付近に、規約へのリンクを含む文言が自動的に挿入されます。
-      </div>
-    </section>
-
-    <!-- 12. ステータス -->
-    <section id="status">
-      <h2>12. 注文ステータスフロー</h2>
-      <table>
-        <tr>
-          <th>ステータス</th>
-          <th>意味</th>
-          <th>次のアクション</th>
-        </tr>
-        <tr>
-          <td><span class="badge badge-pending">入金待ち</span></td>
-          <td>銀行振込の入金確認待ち</td>
-          <td>入金確認後 → 「決済完了」へ変更</td>
-        </tr>
-         <tr>
-          <td><span class="badge badge-processing">決済完了 / 発送待ち</span></td>
-          <td>決済が完了し、配送準備中</td>
-          <td>発送完了後 → 「発送済み」へ変更</td>
-        </tr>
-        <tr>
-          <td><span class="badge badge-active" style="background:#f0fdf4; color:#22c55e;">🟣 サービス中 / 継続中</span></td>
-          <td>サブスクリプション（定期購入）が有効な状態</td>
-          <td>次回の自動課金を待ちます。解約されるまでこの状態が続きます。</td>
-        </tr>
-        <tr>
-          <td><span class="badge badge-completed">発送済み / 完了</span></td>
-          <td>商品を発送済み、または単発サービスの提供完了</td>
-          <td>—（完了）</td>
-        </tr>
-        <tr>
-          <td><span class="badge badge-cancelled">キャンセル</span></td>
-          <td>注文をキャンセルした</td>
-          <td>購入者に自動でキャンセルメールが送られます</td>
-        </tr>
-      </table>
-
-      <div class="alert alert-info">
-        💡 クレジットカードまたはPayPay（Stripe）決済の場合、決済が完了した時点で自動的に「決済完了 / 発送待ち（サービス・デジタルの場合は『サービス中 / 継続中』）」になります。
-      </div>
-    </section>
-
-    <!-- 13. 各種アクション操作 -->
-    <section id="actions">
-      <h2>13. 各種アクション操作</h2>
-
-      <div class="card">
-        <h4><span class="btn-sample" style="color:#444;">編集</span> — 注文を編集</h4>
-        <p>購入者情報・ステータス・送り状番号を変更できます。送り状番号を入力して保存すると、購入者への発送通知メールが自動送信されます。</p>
-      </div>
-
-      <div class="card">
-        <h4><span class="btn-sample" style="color:#005fa3;">📧 再送</span> — 確認メール再送</h4>
-        <p>注文確認メールを購入者に再送します。メールが届いていないと連絡を受けた際に使用します。</p>
-      </div>
-
-      <div class="card">
-        <h4><span class="btn-sample" style="color:#a00; border-color:#a00;">キャンセル</span> — 注文キャンセル</h4>
-        <p>注文をキャンセルします。実行すると：</p>
-        <ul style="padding-left:20px; margin-top:6px;">
-          <li>ステータスが「キャンセル」に更新される</li>
-          <li>購入者にキャンセル通知メールが自動送信される</li>
-          <li><strong>クレジットカード・PayPay（Stripe）決済の場合、自動的に全額返金が実行されます。</strong></li>
-        </ul>
-        <div class="alert alert-info" style="margin-top:10px;">
-          💡 自動返金の結果は画面上のメッセージで確認できます。銀行振込や代金引換の場合は、手動での返金対応が必要です。<br>
-          💡 <strong>在庫とクーポンの復元</strong>：キャンセルを実行すると、その注文に含まれていた商品の在庫および使用されたクーポンの利用回数が自動的に復元（差し戻し）されます。
+      <!-- 会員割引の説明 -->
+      <section id="member-discount">
+        <h3>💎 会員限定割引 [v3.12.0]</h3>
+        <p>特定の会員（ログインユーザー）に対して、ショップ全体の商品を自動的に割引価格で提供する機能です。</p>
+        <div class="card">
+          <h4>✨ プレミアムな表示と自動計算</h4>
+          <ul style="padding-left:20px;">
+            <li><strong>一律割引</strong>: 設定した割引率（%）が、サブスクを除くすべての商品に自動適用されます。</li>
+            <li><strong>プレミアムバッジ</strong>: ログインユーザーには、**専用のグラデーションバッジ**（インディゴ〜パープル）が表示され、特別感を演出します。</li>
+            <li><strong>打ち消し線表示</strong>: 元の価格に打ち消し線を引き、その隣に目立つ会員価格を自動で並記します。</li>
+            <li><strong>リアルタイム反映</strong>: 商品詳細だけでなく、カートドロワーやチェックアウト画面でも常に割引後の最終金額が表示されます。</li>
+            <li><strong>システム全域への統合 [v3.12.5]</strong>:
+              購入者へのメール、納品書、領収書、管理用CSV、およびマイページ履歴のすべてにおいて「会員割引額」が明記され、計算不整合が解消されました。</li>
+          </ul>
         </div>
-        <div class="alert alert-warning" style="margin-top:10px;">
-          ⚠️ キャンセル後に「発送済み」などに戻すには「編集」からステータスを変更してください。
+        <div class="alert alert-info">
+          💡 <strong>運営のヒント</strong>: マイページには「会員割引適用中」の専用バナーが表示され、会員であるメリットを常に意識させることができます。
         </div>
-      </div>
+      </section>
 
-      <div class="card">
-        <h4><span class="btn-sample" style="color:#2271b1;">📄 納品書</span> / <span class="btn-sample"
-            style="color:#2271b1;">🧾 領収書</span> — 各種帳票出力</h4>
-        <p>注文詳細に基づいた納品書や領収書を「印刷用A4レイアウト」で表示します。ブラウザの印刷機能を使用してPDF保存や紙への印刷が可能です。</p>
-        <ul style="padding-left:20px; margin-top:6px;">
-          <li><strong>納品書</strong>：商品明細や配送先を記載します。</li>
-          <li><strong>領収書</strong>：合計金額を強調した領収書形式で出力します。</li>
-        </ul>
-      </div>
-
-
-      <div class="card">
-        <h4><span class="btn-sample" style="color:#a00; border-color:#a00;">削除</span> — 注文削除</h4>
-        <p>注文を完全に削除します。この操作は元に戻せません。通常はキャンセルを使用し、削除は不要な注文のみに限定することを推奨します。</p>
-        <div class="alert alert-info" style="margin-top:10px;">
-          💡 <strong>在庫・クーポンの復元</strong>：未キャンセルの注文を削除した場合、削除前に在庫およびクーポン使用回数が自動的に復元されます。
+      <!-- 12. 再購入（リピート購入）機能 -->
+      <section id="buy-again">
+        <h2>12. 再購入（リピート購入）機能 [v3.12.0]</h2>
+        <p>過去に購入した商品を、マイページからワンクリックで現在のカートに追加できるリピート促進機能です。</p>
+        <div class="card">
+          <h4>📦 数量の自動統合プロセスの追加</h4>
+          <ul style="padding-left:20px;">
+            <li><strong>「再購入」ボタン</strong>: 会員マイページの各注文履歴カードに表示されます。</li>
+            <li><strong>重複商品の統合（マージ）</strong>: カートにすでに同じ商品が入っている場合、自動的に**既存の数量に追加（マージ）**されるため、カート内が重複した商品で溢れるのを防ぎます。
+            </li>
+            <li><strong>スマートなフィードバック</strong>: ボタンを押すと即座に「✅ X個追加しました」とボタン上に表示され、自動的にカートドロワーが展開します。</li>
+          </ul>
         </div>
-      </div>
-    </section>
+        <div class="alert alert-success">
+          ✅ <strong>時短体験</strong>: 消耗品やお気に入りのアイテムを「以前と同じ条件（オプション等）」で即座にカートへ入れることができ、チェックアウトまでの工数を最小限に抑えます。
+        </div>
+      </section>
 
-    <!-- 14. クーポン管理 -->
-    <section id="coupon">
-      <h2>14. クーポン管理</h2>
-      <p>WordPress管理画面 → <strong>各種商品 → クーポン管理</strong> でクーポンを作成・管理できます。</p>
-      
-      <div class="card">
-        <h4>🎫 クーポンの作成</h4>
-        <p>「新規追加」から以下の項目を設定してクーポンを発行します。</p>
+      <!-- 9. SNSログイン連携 -->
+      <section id="sns-login">
+        <h2>9. SNSログイン連携</h2>
+        <p>GoogleおよびLINEアカウントを使用して、ワンクリックでログイン・会員登録が可能です。</p>
+
+        <div class="card">
+          <h4>🛠️ 管理者側の設定手順</h4>
+          <ol style="padding-left:20px; font-size:0.95rem;">
+            <li><strong>各種設定 → SNS連携</strong> タブを開きます。</li>
+            <li><strong>SNSログインを有効にする</strong> チェックボックスで、機能全体のON/OFFを切り替えられます。</li>
+            <li>Google Cloud Console または LINE Developers で作成した <strong>クライアントID</strong> と <strong>クライアントシークレット</strong>
+              を入力します。</li>
+            <li>設定画面に表示されている「コールバックURL」を、各SNS側の設定（承認済みのリダイレクトURI）に登録してください。</li>
+          </ol>
+        </div>
+
+        <div class="alert alert-info">
+          💡 <strong>シンプルな会員登録</strong>: 初めてSNSでログインした際、自動的にWordPressアカウントが作成されます（メールアドレスが連携されます）。
+        </div>
+      </section>
+
+      <!-- 10. システムログの確認 -->
+      <section id="system-log">
+        <h2>10. システムログの確認</h2>
+        <p>決済エラーやWebhookの失敗など、システムの稼働状況をリアルタイムで確認・管理できます。</p>
+
+        <div class="card">
+          <h4>📋 ログの閲覧方法</h4>
+          <p>WordPressメニュー：<strong>各種商品 → システムログ</strong> を開きます。</p>
+          <ul style="padding-left:20px;">
+            <li><strong>最新100件を表示</strong>: 発生日時、エラーレベル（ERROR/INFOなど）、メッセージ、および詳細なデータが一覧で表示されます。</li>
+            <li><strong>エラーの特定</strong>: StripeのWebhookが認証できなかった場合や、メール送信に失敗した際などの原因調査に役立ちます。</li>
+            <li><strong>ログの消去</strong>: 定期的に「ログをすべて消去」ボタンでデータをリセットできます（最新500件を超えると自動的に古いものから削除されるため、肥大化の心配はありません）。</li>
+          </ul>
+        </div>
+
+        <div class="alert alert-info">
+          💡 <strong>「ログはありません」と表示される場合</strong>: システムが正常に稼働し、エラーが一度も発生していない状態です。エラーが発生した際のみ記録されます。
+        </div>
+      </section>
+
+      <!-- 11. 会員規約（利用規約）の設定 -->
+      <section id="membership-terms-display">
+        <h2>11. 会員規約（利用規約）の設定</h2>
+        <p>会員登録や商品の購入に際して、お客様に同意いただく規約を管理・表示できます。</p>
+
+        <div class="card">
+          <h4>📋 設定と表示の手順</h4>
+          <ol style="padding-left:20px; font-size:0.95rem;">
+            <li><strong>各種設定 → 会員規約</strong> タブを開きます。</li>
+            <li>規約の本文を入力し「設定を保存」をクリックしてください。
+              <ul>
+                <li><strong>ショップ名の自動反映</strong>: 本文中に <code>[ショップ名]</code> または <code>[ec_shop_name]</code>
+                  と記述すると、WordPressの「サービス名（サイト名）」が自動的に挿入されます。</li>
+                <li>日本語のショートコードが不安な場合は、英数表記の <code>[ec_shop_name]</code> をご利用ください。どちらも同じ動作をします。</li>
+                <li>HTMLタグ（p, br, strong等）が使用可能です。</li>
+              </ul>
+            </li>
+            <li><strong>固定ページの自動生成</strong>: プラグインのインストール・有効化時に、<code>[ec_membership_terms]</code>
+              が配置された「会員規約」固定ページが自動的に作成されています。</li>
+            <li>もしページを削除してしまった場合は、再度固定ページを作成し、以下のショートコードを貼り付けてください。
+              <div class="shortcode" style="margin-top:10px;">[ec_membership_terms]</div>
+            </li>
+          </ol>
+        </div>
+
+        <div class="alert alert-info">
+          💡 <strong>同意の仕組み</strong>: Simple
+          ECでは、ユーザーの利便性を考慮し「ログインまたは注文確定を行う＝規約に同意した」とみなす法的構成を採用しています。ログインフォームや注文ボタン付近に、規約へのリンクを含む文言が自動的に挿入されます。
+        </div>
+      </section>
+
+      <!-- 12. ステータス -->
+      <section id="status">
+        <h2>12. 注文ステータスフロー</h2>
         <table>
           <tr>
-            <th>項目</th>
+            <th>ステータス</th>
+            <th>意味</th>
+            <th>次のアクション</th>
+          </tr>
+          <tr>
+            <td><span class="badge badge-pending">入金待ち</span></td>
+            <td>銀行振込の入金確認待ち</td>
+            <td>入金確認後 → 「決済完了」へ変更</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-processing">決済完了 / 発送待ち</span></td>
+            <td>決済が完了し、配送準備中</td>
+            <td>発送完了後 → 「発送済み」へ変更</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-active" style="background:#f0fdf4; color:#22c55e;">🟣 サービス中 / 継続中</span></td>
+            <td>サブスクリプション（定期購入）が有効な状態</td>
+            <td>次回の自動課金を待ちます。解約されるまでこの状態が続きます。</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-completed">発送済み / 完了</span></td>
+            <td>商品を発送済み、または単発サービスの提供完了</td>
+            <td>—（完了）</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-cancelled">キャンセル</span></td>
+            <td>注文をキャンセルした</td>
+            <td>購入者に自動でキャンセルメールが送られます</td>
+          </tr>
+        </table>
+
+        <div class="alert alert-info">
+          💡 クレジットカードまたはPayPay（Stripe）決済の場合、決済が完了した時点で自動的に「決済完了 / 発送待ち（サービス・デジタルの場合は『サービス中 / 継続中』）」になります。
+        </div>
+      </section>
+
+      <!-- 13. 各種アクション操作 -->
+      <section id="actions">
+        <h2>13. 各種アクション操作</h2>
+
+        <div class="card">
+          <h4><span class="btn-sample" style="color:#444;">編集</span> — 注文を編集</h4>
+          <p>購入者情報・ステータス・送り状番号を変更できます。送り状番号を入力して保存すると、購入者への発送通知メールが自動送信されます。</p>
+        </div>
+
+        <div class="card">
+          <h4><span class="btn-sample" style="color:#005fa3;">📧 再送</span> — 確認メール再送</h4>
+          <p>注文確認メールを購入者に再送します。メールが届いていないと連絡を受けた際に使用します。</p>
+        </div>
+
+        <div class="card">
+          <h4><span class="btn-sample" style="color:#a00; border-color:#a00;">キャンセル</span> — 注文キャンセル</h4>
+          <p>注文をキャンセルします。実行すると：</p>
+          <ul style="padding-left:20px; margin-top:6px;">
+            <li>ステータスが「キャンセル」に更新される</li>
+            <li>購入者にキャンセル通知メールが自動送信される</li>
+            <li><strong>クレジットカード・PayPay（Stripe）決済の場合、自動的に全額返金が実行されます。</strong></li>
+          </ul>
+          <div class="alert alert-info" style="margin-top:10px;">
+            💡 自動返金の結果は画面上のメッセージで確認できます。銀行振込や代金引換の場合は、手動での返金対応が必要です。<br>
+            💡 <strong>在庫とクーポンの復元</strong>：キャンセルを実行すると、その注文に含まれていた商品の在庫および使用されたクーポンの利用回数が自動的に復元（差し戻し）されます。
+          </div>
+          <div class="alert alert-warning" style="margin-top:10px;">
+            ⚠️ キャンセル後に「発送済み」などに戻すには「編集」からステータスを変更してください。
+          </div>
+        </div>
+
+        <div class="card">
+          <h4><span class="btn-sample" style="color:#2271b1;">📄 納品書</span> / <span class="btn-sample"
+              style="color:#2271b1;">🧾 領収書</span> — 各種帳票出力</h4>
+          <p>注文詳細に基づいた納品書や領収書を「印刷用A4レイアウト」で表示します。ブラウザの印刷機能を使用してPDF保存や紙への印刷が可能です。</p>
+          <ul style="padding-left:20px; margin-top:6px;">
+            <li><strong>納品書</strong>：商品明細や配送先を記載します。</li>
+            <li><strong>領収書</strong>：合計金額を強調した領収書形式で出力します。</li>
+          </ul>
+        </div>
+
+
+        <div class="card">
+          <h4><span class="btn-sample" style="color:#a00; border-color:#a00;">削除</span> — 注文削除</h4>
+          <p>注文を完全に削除します。この操作は元に戻せません。通常はキャンセルを使用し、削除は不要な注文のみに限定することを推奨します。</p>
+          <div class="alert alert-info" style="margin-top:10px;">
+            💡 <strong>在庫・クーポンの復元</strong>：未キャンセルの注文を削除した場合、削除前に在庫およびクーポン使用回数が自動的に復元されます。
+          </div>
+        </div>
+      </section>
+
+      <!-- 14. クーポン管理 -->
+      <section id="coupon">
+        <h2>14. クーポン管理</h2>
+        <p>WordPress管理画面 → <strong>各種商品 → クーポン管理</strong> でクーポンを作成・管理できます。</p>
+
+        <div class="card">
+          <h4>🎫 クーポンの作成</h4>
+          <p>「新規追加」から以下の項目を設定してクーポンを発行します。</p>
+          <table>
+            <tr>
+              <th>項目</th>
+              <th>説明</th>
+            </tr>
+            <tr>
+              <td>クーポンコード</td>
+              <td>お客さまが入力する半角英数字のコード（例: WELCOME2024）</td>
+            </tr>
+            <tr>
+              <td>割引種別</td>
+              <td>百分率(%) または 固定額(円) を選択</td>
+            </tr>
+            <tr>
+              <td>割引額</td>
+              <td>10%なら「10」、500円なら「500」と入力</td>
+            </tr>
+            <tr>
+              <td>有効期限</td>
+              <td>クーポンの利用期限を設定（未設定で無期限）</td>
+            </tr>
+            <tr>
+              <td>利用回数上限</td>
+              <td>そのクーポンが全体で何回使われたら無効にするかを設定（未設定で無制限）</td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="card" style="margin-top:20px; border-left:4px solid var(--primary);">
+          <h4>🛒 お客さま側の利用方法</h4>
+          <p>チェックアウト（お支払い）画面の「クーポンをお持ちですか？」をクリックし、コードを入力して「適用」ボタンを押すと、リアルタイムで合計金額が更新されます。</p>
+        </div>
+
+        <div class="alert alert-info">
+          💡
+          <strong>利用回数の自動カウント</strong>：注文が確定するたびに、利用されたクーポンの「現在の利用回数」が自動で加算されます。上限に達したクーポンは自動的に無効となります（※注文キャンセル時には自動的に回数が差し戻されます）。
+        </div>
+      </section>
+
+      <!-- 11. サブスクリプション機能 -->
+      <section id="subscription">
+        <h2>11. サブスクリプション機能 [v3.0.0]</h2>
+        <p>継続的なサービス（月額・年額など）を販売するための機能です。</p>
+
+        <div class="card">
+          <h4>📦 商品をサブスクとして設定する</h4>
+          <p>「商品を新規追加」または「編集」画面で、<strong>「この商品をサブスクリプションとして販売する」</strong>にチェックを入れます。</p>
+          <div class="alert alert-info">
+            💡 サブスクを有効にした商品は、Stripe Checkout で自動的に「継続課金」として処理されます。<br>
+            🚚 <strong>配送が必要な商品 (定期購入)</strong>にチェックを入れると、チェックアウト時に住所入力が必須になります（サービス提供型の場合はチェックを外してください）。<br>
+            ⚠️ サブスクリプション商品が含まれる場合、<strong>クレジットカード決済のみ</strong>となります（PayPay・銀行振込・代金引換はご利用いただけません）。
+          </div>
+        </div>
+
+        <div class="card">
+          <h4>💳 購入者の管理ポータル</h4>
+          <p>購入者は以下の方法で自身のサブスクリプションを管理（解約、カード変更など）できます。</p>
+          <ul style="padding-left:20px;">
+            <li><strong>注文照会ページ</strong>: 照会結果の画面に表示される「サブスクリプション管理」ボタンから移動。</li>
+            <li><strong>統合マイページ</strong>: <code>[ec_member_dashboard]</code> を設置したページから（メール認証コードによる安全なログインが可能です）。</li>
+          </ul>
+        </div>
+
+        <div class="alert alert-warning">
+          ⚠️
+          <strong>Webhookの設定</strong>：サブスクの「解約」をシステムに反映させるには、Stripe管理画面でWebhookの設定（<code>customer.subscription.deleted</code>
+          を「送る」設定）が必要です。
+        </div>
+      </section>
+
+      <!-- 16. 注文照会ページ -->
+      <section id="inquiry">
+        <h2>16. 購入者向け注文照会ページ</h2>
+        <p>購入者が自分で注文状況を確認できるページです。ショートコードを固定ページに設置するだけで動作します。</p>
+
+        <h3>設置方法</h3>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num"></div>
+            <div class="step-body">
+              <strong>固定ページを新規作成</strong>
+              例：「注文照会」というタイトルで固定ページを作成
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num"></div>
+            <div class="step-body">
+              <strong>ショートコードを貼り付け</strong>
+              <div class="shortcode">[ec_order_inquiry]</div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num"></div>
+            <div class="step-body">
+              <strong>確認メールにURLを追記</strong>
+              設定の確認メール文面に「注文照会はこちら：（ページURL）」を追加
+            </div>
+          </div>
+        </div>
+
+        <h3>照会ページでできること</h3>
+        <ul style="padding-left:20px;">
+          <li>注文番号 ＋ メールアドレスで注文詳細を確認</li>
+          <li>注文ステータス（入金待ち / 発送準備中 / 発送済み / キャンセル）の確認</li>
+          <li>送り状番号の確認（発送後に表示）</li>
+          <li>デジタル商品のダウンロードリンク再取得</li>
+          <li><strong>インボイス対応の税額内訳表示</strong>（消費税 10% / 8% の対象額と税額を表示）</li>
+        </ul>
+
+        <div class="alert alert-info">
+          💡 注文番号は確認メールに記載されています。購入者に案内してください。
+        </div>
+
+        <div class="card" style="margin-top:20px;">
+          <h4>💬 注文備考（メッセージ機能）</h4>
+          <p>購入者がチェックアウト時に管理者へメッセージを残すことができます。</p>
+          <ul style="padding-left:20px; font-size:0.95rem;">
+            <li><strong>購入者側</strong>: 支払い画面の「備考」欄に自由に入力できます。</li>
+            <li><strong>管理者側</strong>: 各通知メールおよび「受注編集」画面で内容を確認できます。</li>
+            <li><strong>追記・修正</strong>: 管理者は「受注編集」画面から備考内容を更新することも可能です。</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- 17. ダウンロード管理 -->
+      <section id="download">
+        <h2>17. ダウンロード管理</h2>
+        <p>ダウンロード版の購入の場合、リンクに有効期限と回数制限を設定できます。</p>
+
+        <table>
+          <tr>
+            <th>設定項目</th>
+            <th>デフォルト</th>
             <th>説明</th>
           </tr>
           <tr>
-            <td>クーポンコード</td>
-            <td>お客さまが入力する半角英数字のコード（例: WELCOME2024）</td>
+            <td>ダウンロード有効期限</td>
+            <td>7日間</td>
+            <td>注文日から何日間ダウンロード可能か</td>
           </tr>
           <tr>
-            <td>割引種別</td>
-            <td>百分率(%) または 固定額(円) を選択</td>
-          </tr>
-          <tr>
-            <td>割引額</td>
-            <td>10%なら「10」、500円なら「500」と入力</td>
-          </tr>
-          <tr>
-            <td>有効期限</td>
-            <td>クーポンの利用期限を設定（未設定で無期限）</td>
-          </tr>
-          <tr>
-            <td>利用回数上限</td>
-            <td>そのクーポンが全体で何回使われたら無効にするかを設定（未設定で無制限）</td>
+            <td>ダウンロード上限回数</td>
+            <td>5回</td>
+            <td>一つの注文で何回ダウンロードできるか</td>
           </tr>
         </table>
-      </div>
 
-      <div class="card" style="margin-top:20px; border-left:4px solid var(--primary);">
-        <h4>🛒 お客さま側の利用方法</h4>
-        <p>チェックアウト（お支払い）画面の「クーポンをお持ちですか？」をクリックし、コードを入力して「適用」ボタンを押すと、リアルタイムで合計金額が更新されます。</p>
-      </div>
-      
-      <div class="alert alert-info">
-        💡 <strong>利用回数の自動カウント</strong>：注文が確定するたびに、利用されたクーポンの「現在の利用回数」が自動で加算されます。上限に達したクーポンは自動的に無効となります（※注文キャンセル時には自動的に回数が差し戻されます）。
-      </div>
-    </section>
-
-    <!-- 11. サブスクリプション機能 -->
-    <section id="subscription">
-      <h2>11. サブスクリプション機能 [v3.0.0]</h2>
-      <p>継続的なサービス（月額・年額など）を販売するための機能です。</p>
-
-      <div class="card">
-        <h4>📦 商品をサブスクとして設定する</h4>
-        <p>「商品を新規追加」または「編集」画面で、<strong>「この商品をサブスクリプションとして販売する」</strong>にチェックを入れます。</p>
-        <div class="alert alert-info">
-          💡 サブスクを有効にした商品は、Stripe Checkout で自動的に「継続課金」として処理されます。<br>
-          🚚 <strong>配送が必要な商品 (定期購入)</strong>にチェックを入れると、チェックアウト時に住所入力が必須になります（サービス提供型の場合はチェックを外してください）。<br>
-          ⚠️ サブスクリプション商品が含まれる場合、<strong>クレジットカード決済のみ</strong>となります（PayPay・銀行振込・代金引換はご利用いただけません）。
+        <div class="alert alert-warning">
+          ⚠️ 有効期限・上限回数を超えた場合、購入者が注文照会ページから確認すると「期限切れ」または「上限に達しました」と表示されます。延長が必要な場合は管理画面から注文を編集してください。
         </div>
-      </div>
+      </section>
 
-      <div class="card">
-        <h4>💳 購入者の管理ポータル</h4>
-        <p>購入者は以下の方法で自身のサブスクリプションを管理（解約、カード変更など）できます。</p>
+      <!-- 18. 注文データのCSV出力 -->
+      <section id="csv">
+        <h2>18. 受注データのCSVエクスポート</h2>
+        <p>受注一覧の右上にある「💾 CSVエクスポート」ボタンをクリックすると、全注文データをCSVファイルでダウンロードできます。</p>
+
+        <h3>CSVの項目</h3>
+        <p>注文ID / 注文番号 / 購入者名 / メールアドレス / 購入商品 / 商品小計 / <strong>会員割引額</strong> / 送料 / 代引き手数料 / クーポンコード / クーポン割引額 /
+          10%対象額 / 10%消費税 / 8%対象額 / 8%消費税 / 合計金額 / 支払い方法 / ステータス / 送り状番号 / 注文日時 / 郵便番号 / 都道府県 / 住所 / Stripe 顧客ID /
+          Stripe サブスクID</p>
+
+        <h3>使用シーン</h3>
         <ul style="padding-left:20px;">
-          <li><strong>注文照会ページ</strong>: 照会結果の画面に表示される「サブスクリプション管理」ボタンから移動。</li>
-          <li><strong>統合マイページ</strong>: <code>[ec_member_dashboard]</code> を設置したページから（メール認証コードによる安全なログインが可能です）。</li>
+          <li>確定申告時の売上集計</li>
+          <li>Excelでの売上分析</li>
+          <li>バックグラウンドでの顧客管理</li>
         </ul>
-      </div>
 
-      <div class="alert alert-warning">
-        ⚠️ <strong>Webhookの設定</strong>：サブスクの「解約」をシステムに反映させるには、Stripe管理画面でWebhookの設定（<code>customer.subscription.deleted</code> を「送る」設定）が必要です。
-      </div>
-    </section>
-
-    <!-- 16. 注文照会ページ -->
-    <section id="inquiry">
-      <h2>16. 購入者向け注文照会ページ</h2>
-      <p>購入者が自分で注文状況を確認できるページです。ショートコードを固定ページに設置するだけで動作します。</p>
-
-      <h3>設置方法</h3>
-      <div class="steps">
-        <div class="step">
-          <div class="step-num"></div>
-          <div class="step-body">
-            <strong>固定ページを新規作成</strong>
-            例：「注文照会」というタイトルで固定ページを作成
-          </div>
+        <div class="alert alert-success">
+          ✅ ファイルはUTF-8 BOM付きで出力されるため、Excelで開いても文字化けしません。
         </div>
-        <div class="step">
-          <div class="step-num"></div>
-          <div class="step-body">
-            <strong>ショートコードを貼り付け</strong>
-            <div class="shortcode">[ec_order_inquiry]</div>
-          </div>
-        </div>
-        <div class="step">
-          <div class="step-num"></div>
-          <div class="step-body">
-            <strong>確認メールにURLを追記</strong>
-            設定の確認メール文面に「注文照会はこちら：（ページURL）」を追加
-          </div>
-        </div>
-      </div>
+      </section>
 
-      <h3>照会ページでできること</h3>
-      <ul style="padding-left:20px;">
-        <li>注文番号 ＋ メールアドレスで注文詳細を確認</li>
-        <li>注文ステータス（入金待ち / 発送準備中 / 発送済み / キャンセル）の確認</li>
-        <li>送り状番号の確認（発送後に表示）</li>
-        <li>デジタル商品のダウンロードリンク再取得</li>
-        <li><strong>インボイス対応の税額内訳表示</strong>（消費税 10% / 8% の対象額と税額を表示）</li>
-      </ul>
+      <!-- 19. 在庫アラート機能 -->
+      <section id="stock-alert">
+        <h2>19. 在庫アラート機能</h2>
+        <p>在庫切れによる販売機会の損失を防ぐため、在庫が少なくなった際に自動で管理者に通知する機能です。</p>
 
-      <div class="alert alert-info">
-        💡 注文番号は確認メールに記載されています。購入者に案内してください。
-      </div>
-
-      <div class="card" style="margin-top:20px;">
-        <h4>💬 注文備考（メッセージ機能）</h4>
-        <p>購入者がチェックアウト時に管理者へメッセージを残すことができます。</p>
-        <ul style="padding-left:20px; font-size:0.95rem;">
-          <li><strong>購入者側</strong>: 支払い画面の「備考」欄に自由に入力できます。</li>
-          <li><strong>管理者側</strong>: 各通知メールおよび「受注編集」画面で内容を確認できます。</li>
-          <li><strong>追記・修正</strong>: 管理者は「受注編集」画面から備考内容を更新することも可能です。</li>
-        </ul>
-      </div>
-    </section>
-
-    <!-- 17. ダウンロード管理 -->
-    <section id="download">
-      <h2>17. ダウンロード管理</h2>
-      <p>ダウンロード版の購入の場合、リンクに有効期限と回数制限を設定できます。</p>
-
-      <table>
-        <tr>
-          <th>設定項目</th>
-          <th>デフォルト</th>
-          <th>説明</th>
-        </tr>
-        <tr>
-          <td>ダウンロード有効期限</td>
-          <td>7日間</td>
-          <td>注文日から何日間ダウンロード可能か</td>
-        </tr>
-        <tr>
-          <td>ダウンロード上限回数</td>
-          <td>5回</td>
-          <td>一つの注文で何回ダウンロードできるか</td>
-        </tr>
-      </table>
-
-      <div class="alert alert-warning">
-        ⚠️ 有効期限・上限回数を超えた場合、購入者が注文照会ページから確認すると「期限切れ」または「上限に達しました」と表示されます。延長が必要な場合は管理画面から注文を編集してください。
-      </div>
-    </section>
-
-    <!-- 18. 注文データのCSV出力 -->
-    <section id="csv">
-      <h2>18. 受注データのCSVエクスポート</h2>
-      <p>受注一覧の右上にある「💾 CSVエクスポート」ボタンをクリックすると、全注文データをCSVファイルでダウンロードできます。</p>
-
-      <h3>CSVの項目</h3>
-      <p>注文ID / 注文番号 / 購入者名 / メールアドレス / 購入商品 / 商品小計 / <strong>会員割引額</strong> / 送料 / 代引き手数料 / クーポンコード / クーポン割引額 / 10%対象額 / 10%消費税 / 8%対象額 / 8%消費税 / 合計金額 / 支払い方法 / ステータス / 送り状番号 / 注文日時 / 郵便番号 / 都道府県 / 住所 / Stripe 顧客ID / Stripe サブスクID</p>
-
-      <h3>使用シーン</h3>
-      <ul style="padding-left:20px;">
-        <li>確定申告時の売上集計</li>
-        <li>Excelでの売上分析</li>
-        <li>バックグラウンドでの顧客管理</li>
-      </ul>
-
-      <div class="alert alert-success">
-        ✅ ファイルはUTF-8 BOM付きで出力されるため、Excelで開いても文字化けしません。
-      </div>
-    </section>
-
-    <!-- 19. 在庫アラート機能 -->
-    <section id="stock-alert">
-      <h2>19. 在庫アラート機能</h2>
-      <p>在庫切れによる販売機会の損失を防ぐため、在庫が少なくなった際に自動で管理者に通知する機能です。</p>
-      
-      <div class="card">
-        <h4>🚨 通知の仕組み</h4>
-        <ul>
+        <div class="card">
+          <h4>🚨 通知の仕組み</h4>
+          <ul>
             <li><strong>しきい値の設定</strong>: 「設定 &gt; 一般」タブの「在庫アラートのしきい値」で、何個以下になったら通知するかを設定できます（デフォルト: 5）。</li>
             <li><strong>リアルタイム判定</strong>: 購入によって在庫が減った際や、CSV・手動で在庫を書き換えた際に自動チェックが行われます。</li>
             <li><strong>メール通知</strong>: 在庫がしきい値以下になると、管理者の受信メールアドレスに「【在庫不足アラート】商品名」という件名のメールが届きます。</li>
             <li><strong>重複防止</strong>: 一度数値が下がって通知された後は、在庫が補充（しきい値より大きく設定）されるまで、同じ商品のアラートは二重送信されません。</li>
-        </ul>
-      </div>
-      
-      <div class="note">
-        <strong>💡 運用のコツ</strong><br>
-        人気商品はしきい値を多め（例: 20個）に設定し、一点ものや入荷が早いものは少なめ（例: 2個）に設定したしきい値を「一般設定」で調整してください。
-      </div>
-    </section>
-
-    <!-- 20. ディープリンク機能 -->
-    <section id="deep-link">
-      <h2>20. ディープリンク機能（特定商品への直リンク） [v3.11.3]</h2>
-      <p>SNSやメルマガから、特定の商品の「詳細画面」を開いた状態で直接案内できる機能です。</p>
-      
-      <div class="card">
-        <h4>🔗 リンクの形式</h4>
-        <p>ギャラリーが設置されているページのURLの末尾に <code>?photo_id=商品ID</code> を付与します。</p>
-        <div class="shortcode" style="background:#f1f5f9; color:#334155; border:1px solid #e2e8f0;">
-          https://example.com/gallery/<strong>?photo_id=123</strong>
+          </ul>
         </div>
-      </div>
 
-      <div class="card">
-        <h4>✨ 動作の仕組み</h4>
-        <ul style="padding-left:20px;">
-          <li><strong>自動オープン</strong>: このリンクを踏んでページを開くと、該当商品の詳細モーダル（クイックビュー）が自動的に開きます。</li>
-          <li><strong>自動スクロール</strong>: 商品がギャラリーの下の方にあっても、開いた瞬間にその商品の位置までスムーズにスクロールします。</li>
-          <li><strong>SEOとリダイレクトへの配慮</strong>: WordPress標準の「正規URLリダイレクト」に干渉せず、サブページ（例: <code>/special-event/</code>）でも正しく動作するよう最適化されています。</li>
+        <div class="note">
+          <strong>💡 運用のコツ</strong><br>
+          人気商品はしきい値を多め（例: 20個）に設定し、一点ものや入荷が早いものは少なめ（例: 2個）に設定したしきい値を「一般設定」で調整してください。
+        </div>
+      </section>
+
+      <!-- 20. ディープリンク機能 -->
+      <section id="deep-link">
+        <h2>20. ディープリンク機能（特定商品への直リンク） [v3.11.3]</h2>
+        <p>SNSやメルマガから、特定の商品の「詳細画面」を開いた状態で直接案内できる機能です。</p>
+
+        <div class="card">
+          <h4>🔗 リンクの形式</h4>
+          <p>ギャラリーが設置されているページのURLの末尾に <code>?photo_id=商品ID</code> を付与します。</p>
+          <div class="shortcode" style="background:#f1f5f9; color:#334155; border:1px solid #e2e8f0;">
+            https://example.com/gallery/<strong>?photo_id=123</strong>
+          </div>
+        </div>
+
+        <div class="card">
+          <h4>✨ 動作の仕組み</h4>
+          <ul style="padding-left:20px;">
+            <li><strong>自動オープン</strong>: このリンクを踏んでページを開くと、該当商品の詳細モーダル（クイックビュー）が自動的に開きます。</li>
+            <li><strong>自動スクロール</strong>: 商品がギャラリーの下の方にあっても、開いた瞬間にその商品の位置までスムーズにスクロールします。</li>
+            <li><strong>SEOとリダイレクトへの配慮</strong>: WordPress標準の「正規URLリダイレクト」に干渉せず、サブページ（例:
+              <code>/special-event/</code>）でも正しく動作するよう最適化されています。</li>
+          </ul>
+        </div>
+
+        <div class="alert alert-info">
+          <strong>💡 商品IDの確認方法</strong><br>
+          「販売商品」一覧画面で、商品名にマウスを合わせると表示される「ID: 123」という数値が商品IDです。
+        </div>
+      </section>
+
+      <!-- 21. 利用可能なショートコード一覧 -->
+      <section id="shortcodes">
+        <h2>21. 利用可能なショートコード一覧</h2>
+        <p>固定ページや投稿の本文に貼り付けて使用します。</p>
+        <table>
+          <tr>
+            <th>ショートコード</th>
+            <th>機能</th>
+          </tr>
+          <tr>
+            <td><code>[ec_gallery]</code></td>
+            <td>商品一覧（ギャラリー）を表示します。検索バー、カテゴリー切替、価格順ソート機能を内蔵しています。</td>
+          </tr>
+          <tr>
+            <td><code>[ec_checkout]</code></td>
+            <td>ショッピングカート・決済画面を表示します</td>
+          </tr>
+          <tr>
+            <td><code>[ec_cart_indicator]</code></td>
+            <td>現在のカート内の点数を表示する浮遊アイコン</td>
+          </tr>
+          <tr>
+            <td><code>[ec_order_inquiry]</code></td>
+            <td>非ログインユーザー向けの注文状況確認ページを表示します。注文番号とメールアドレスで照会可能です。</td>
+          </tr>
+          <tr>
+            <td><code>[ec_tokushoho]</code></td>
+            <td>特定商取引法に基づく表記を自動生成して表示します</td>
+          </tr>
+          <tr>
+            <td><code>[ec_shipping_payment]</code></td>
+            <td>送料規定や支払い方法、銀行口座情報を一覧表示します</td>
+          </tr>
+          <tr>
+            <td><code>[ec_member_dashboard]</code></td>
+            <td>統合マイページを表示します。パスワード不要のメール認証（OTP）ログインに対応。履歴確認やサブスク管理が可能です [v3.10.0]</td>
+          </tr>
+          <tr>
+            <td><code>[ec_membership_terms]</code></td>
+            <td>会員規約（利用規約）を表示します。本文内の <code>[ショップ名]</code> 等も自動展開されます [v3.10.0]</td>
+          </tr>
+          <tr>
+            <td><code>[ショップ名]</code> / <code>[ec_shop_name]</code></td>
+            <td>WordPress設定の「サイト名」を表示します。規約本文などの各所で使用可能です [v3.10.0]</td>
+          </tr>
+        </table>
+      </section>
+
+      <!-- 22. 会員規約の表示・自動生成 -->
+      <section id="membership-terms">
+        <h2>22. 会員規約の表示・自動生成</h2>
+        <p>オンラインショップ運営に欠かせない会員規約を、簡単に管理・表示できる機能です。</p>
+
+        <div class="card">
+          <h4>📄 自動生成と表示</h4>
+          <ul style="padding-left:20px;">
+            <li><strong>固定ページの自動生成</strong>: プラグインを有効化した際、自動的に「会員規約」という固定ページが作成され、ショートコード
+              <code>[ec_membership_terms]</code> が挿入されます。</li>
+            <li><strong>デフォルト規約のセット</strong>: 初回インストール時に、標準的な第1条〜第12条からなる規約文がデータベースに保存されます。</li>
+            <li><strong>ショートコード <code>[ショップ名]</code></strong>: 規約本文内で <code>[ショップ名]</code> または
+              <code>[ec_shop_name]</code> を使用すると、WordPressの設定にある「サイト名」が自動的に表示されます。</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h4>⚙️ 規約の編集方法</h4>
+          <p>WordPress管理画面 → <strong>各種商品 → 各種設定 → 会員規約</strong> タブから、規約のタイトルと本文を自由に編集できます。HTMLタグも使用可能です。</p>
+        </div>
+
+        <div class="alert alert-info">
+          <strong>💡 みなし同意について</strong><br>
+          ショッピングカートのチェックアウト画面やログイン画面には、「認証を行うことで、会員規約に同意したものとみなされます」という一文が自動的に表示されるようになっています。
+        </div>
+      </section>
+
+      <!-- 23. セキュリティと信頼性 -->
+      <section id="security">
+        <h2>23. セキュリティと信頼性</h2>
+        <div class="card">
+          <p>本プラグインは商用利用を前提として、以下のセキュリティ対策を講じています。</p>
+          <ul style="padding-left:20px;">
+            <li><strong>価格操作の防止</strong>:
+              チェックアウト時にブラウザ側で商品価格やオプション価格が書き換えられた場合でも、サーバー側でデータベースの値を再照合し、正しい金額で決済が行われるよう保護されています。</li>
+            <li><strong>SQLインジェクション対策</strong>: データベースへのすべての操作は、WordPressの安全なクエリ発行手順（プリペイドステートメント）に従って行われています。</li>
+            <li><strong>不正操作の防止</strong>: 非ログインユーザーや権限のないユーザーが、受注データの編集や設定変更を行うことはできません。</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- 24. よくある質問 -->
+      <section id="faq">
+        <h2>24. よくある質問</h2>
+
+        <div class="card">
+          <h4>Q. 購入者からメールが届いていないと言われた</h4>
+          <p>管理画面の受注一覧から該当注文の「📧 再送」ボタンをクリックしてください。また、購入者に迷惑メールフォルダの確認もお願いしてください。</p>
+        </div>
+
+        <div class="card">
+          <h4>Q. ダウンロードリンクが切れていると言われた</h4>
+          <p>購入者を注文照会ページ（<code>[ec_order_inquiry]</code>を設置したページ）に案内してください。注文番号 ＋
+            メールアドレスでダウンロードリンクを再取得できます。有効期限内であれば正常にダウンロードできます。また「マイページ」からも再取得可能です。</p>
+        </div>
+
+        <div class="card">
+          <h4>Q. Stripe決済でエラーが出た</h4>
+          <p>設定画面でStripeシークレットキーが正しく入力されているか確認してください。テストモード（pk_test_...）と本番キー（pk_live_...）を間違えないよう注意してください。</p>
+        </div>
+
+        <div class="card">
+          <h4>Q. 送料が「住所入力後に表示」となっている</h4>
+          <p>配送目的の商品がカートにある場合、配送先住所（都道府県）を入力することで送料が動的に計算されます。サブスクリプション商品で配送不要の設定にしている場合は、送料は発生しません。</p>
+        </div>
+
+        <div class="card">
+          <h4>Q. CSVをExcelで開いたら文字化けした</h4>
+          <p>ファイルはUTF-8 BOM付きで出力されています。そのままExcelでダブルクリックして開いても文字化けしないようになっています。もし文字化けする場合は、Excelの「データ →
+            テキストファイル」から読み込み、元のファイルの形式として「65001: Unicode (UTF-8)」を選択してください。</p>
+        </div>
+
+        <div class="card">
+          <h4>Q. 代金引換が選択できない</h4>
+          <p>デジタル販売（ダウンロード商品）がカートに含まれている場合、またはお届け先地域によって代金引換をご利用いただけません。また、サブスクリプション商品が含まれる場合はクレジットカード決済のみとなります。
+          </p>
+        </div>
+      </section>
+
+      <!-- 25. アップデート履歴 -->
+      <section id="changelog">
+        <h2>25. アップデート履歴</h2>
+        <ul>
+          <li><strong>v3.12.5</strong> -
+            会員割引システムの全域統合。購入者・管理者メール、帳票（納品書・領収書）、CSV、マイページ履歴のすべてについて、会員割引を含めた金額整合性を100%確保しました。</li>
+          <li><strong>v3.11.3</strong> - ディープリンク（?photo_id=）のリダイレクト不具合修正。再入荷通知メールのリンク精度向上（登録元のギャラリーURLを反映）。</li>
+          <li><strong>v3.11.2</strong> - 再入荷通知機能の実装。売り切れ商品の在庫復活時に自動で登録者へメール通知。</li>
+          <li><strong>v3.11.1</strong> - 商品ラベルの色指定機能を追加。カラーピッカーとお気に入りボタンとの重なり調整。</li>
+          <li><strong>v3.11.0</strong> - 商品ラベル（リボン）機能の正式追加。</li>
+          <li><strong>v3.10.0</strong> - 会員規約（利用規約）自動生成機能の追加。ログインUIの最適化とSNSログインの優先表示。</li>
+          <li><strong>v3.9.0</strong> - インボイス制度対応（適格請求書発行事業者番号の設定機能）。税率別内訳の表示。</li>
         </ul>
-      </div>
-      
-      <div class="alert alert-info">
-        <strong>💡 商品IDの確認方法</strong><br>
-        「販売商品」一覧画面で、商品名にマウスを合わせると表示される「ID: 123」という数値が商品IDです。
-      </div>
-    </section>
-
-    <!-- 21. 利用可能なショートコード一覧 -->
-    <section id="shortcodes">
-      <h2>21. 利用可能なショートコード一覧</h2>
-      <p>固定ページや投稿の本文に貼り付けて使用します。</p>
-      <table>
-        <tr>
-          <th>ショートコード</th>
-          <th>機能</th>
-        </tr>
-        <tr>
-          <td><code>[ec_gallery]</code></td>
-          <td>商品一覧（ギャラリー）を表示します。検索バー、カテゴリー切替、価格順ソート機能を内蔵しています。</td>
-        </tr>
-        <tr>
-          <td><code>[ec_checkout]</code></td>
-          <td>ショッピングカート・決済画面を表示します</td>
-        </tr>
-        <tr>
-          <td><code>[ec_cart_indicator]</code></td>
-          <td>現在のカート内の点数を表示する浮遊アイコン</td>
-        </tr>
-        <tr>
-          <td><code>[ec_order_inquiry]</code></td>
-          <td>非ログインユーザー向けの注文状況確認ページを表示します。注文番号とメールアドレスで照会可能です。</td>
-        </tr>
-        <tr>
-          <td><code>[ec_tokushoho]</code></td>
-          <td>特定商取引法に基づく表記を自動生成して表示します</td>
-        </tr>
-        <tr>
-          <td><code>[ec_shipping_payment]</code></td>
-          <td>送料規定や支払い方法、銀行口座情報を一覧表示します</td>
-        </tr>
-        <tr>
-          <td><code>[ec_member_dashboard]</code></td>
-          <td>統合マイページを表示します。パスワード不要のメール認証（OTP）ログインに対応。履歴確認やサブスク管理が可能です [v3.10.0]</td>
-        </tr>
-        <tr>
-          <td><code>[ec_membership_terms]</code></td>
-          <td>会員規約（利用規約）を表示します。本文内の <code>[ショップ名]</code> 等も自動展開されます [v3.10.0]</td>
-        </tr>
-        <tr>
-          <td><code>[ショップ名]</code> / <code>[ec_shop_name]</code></td>
-          <td>WordPress設定の「サイト名」を表示します。規約本文などの各所で使用可能です [v3.10.0]</td>
-        </tr>
-      </table>
-    </section>
-
-    <!-- 22. 会員規約の表示・自動生成 -->
-    <section id="membership-terms">
-      <h2>22. 会員規約の表示・自動生成</h2>
-      <p>オンラインショップ運営に欠かせない会員規約を、簡単に管理・表示できる機能です。</p>
-      
-      <div class="card">
-        <h4>📄 自動生成と表示</h4>
-        <ul style="padding-left:20px;">
-          <li><strong>固定ページの自動生成</strong>: プラグインを有効化した際、自動的に「会員規約」という固定ページが作成され、ショートコード <code>[ec_membership_terms]</code> が挿入されます。</li>
-          <li><strong>デフォルト規約のセット</strong>: 初回インストール時に、標準的な第1条〜第12条からなる規約文がデータベースに保存されます。</li>
-          <li><strong>ショートコード <code>[ショップ名]</code></strong>: 規約本文内で <code>[ショップ名]</code> または <code>[ec_shop_name]</code> を使用すると、WordPressの設定にある「サイト名」が自動的に表示されます。</li>
-        </ul>
-      </div>
-
-      <div class="card">
-        <h4>⚙️ 規約の編集方法</h4>
-        <p>WordPress管理画面 → <strong>各種商品 → 各種設定 → 会員規約</strong> タブから、規約のタイトルと本文を自由に編集できます。HTMLタグも使用可能です。</p>
-      </div>
-
-      <div class="alert alert-info">
-        <strong>💡 みなし同意について</strong><br>
-        ショッピングカートのチェックアウト画面やログイン画面には、「認証を行うことで、会員規約に同意したものとみなされます」という一文が自動的に表示されるようになっています。
-      </div>
-    </section>
-
-    <!-- 23. セキュリティと信頼性 -->
-    <section id="security">
-      <h2>23. セキュリティと信頼性</h2>
-      <div class="card">
-        <p>本プラグインは商用利用を前提として、以下のセキュリティ対策を講じています。</p>
-        <ul style="padding-left:20px;">
-          <li><strong>価格操作の防止</strong>: チェックアウト時にブラウザ側で商品価格やオプション価格が書き換えられた場合でも、サーバー側でデータベースの値を再照合し、正しい金額で決済が行われるよう保護されています。</li>
-          <li><strong>SQLインジェクション対策</strong>: データベースへのすべての操作は、WordPressの安全なクエリ発行手順（プリペイドステートメント）に従って行われています。</li>
-          <li><strong>不正操作の防止</strong>: 非ログインユーザーや権限のないユーザーが、受注データの編集や設定変更を行うことはできません。</li>
-        </ul>
-      </div>
-    </section>
-
-    <!-- 24. よくある質問 -->
-    <section id="faq">
-      <h2>24. よくある質問</h2>
-
-      <div class="card">
-        <h4>Q. 購入者からメールが届いていないと言われた</h4>
-        <p>管理画面の受注一覧から該当注文の「📧 再送」ボタンをクリックしてください。また、購入者に迷惑メールフォルダの確認もお願いしてください。</p>
-      </div>
-
-      <div class="card">
-        <h4>Q. ダウンロードリンクが切れていると言われた</h4>
-        <p>購入者を注文照会ページ（<code>[ec_order_inquiry]</code>を設置したページ）に案内してください。注文番号 ＋
-          メールアドレスでダウンロードリンクを再取得できます。有効期限内であれば正常にダウンロードできます。また「マイページ」からも再取得可能です。</p>
-      </div>
-
-      <div class="card">
-        <h4>Q. Stripe決済でエラーが出た</h4>
-        <p>設定画面でStripeシークレットキーが正しく入力されているか確認してください。テストモード（pk_test_...）と本番キー（pk_live_...）を間違えないよう注意してください。</p>
-      </div>
-
-      <div class="card">
-        <h4>Q. 送料が「住所入力後に表示」となっている</h4>
-        <p>配送目的の商品がカートにある場合、配送先住所（都道府県）を入力することで送料が動的に計算されます。サブスクリプション商品で配送不要の設定にしている場合は、送料は発生しません。</p>
-      </div>
-
-      <div class="card">
-        <h4>Q. CSVをExcelで開いたら文字化けした</h4>
-        <p>ファイルはUTF-8 BOM付きで出力されています。そのままExcelでダブルクリックして開いても文字化けしないようになっています。もし文字化けする場合は、Excelの「データ → テキストファイル」から読み込み、元のファイルの形式として「65001: Unicode (UTF-8)」を選択してください。</p>
-      </div>
-
-      <div class="card">
-        <h4>Q. 代金引換が選択できない</h4>
-        <p>デジタル販売（ダウンロード商品）がカートに含まれている場合、またはお届け先地域によって代金引換をご利用いただけません。また、サブスクリプション商品が含まれる場合はクレジットカード決済のみとなります。
-        </p>
-      </div>
-    </section>
-
-    <!-- 25. アップデート履歴 -->
-    <section id="changelog">
-      <h2>25. アップデート履歴</h2>
-      <ul>
-        <li><strong>v3.12.5</strong> - 会員割引システムの全域統合。購入者・管理者メール、帳票（納品書・領収書）、CSV、マイページ履歴のすべてについて、会員割引を含めた金額整合性を100%確保しました。</li>
-        <li><strong>v3.11.3</strong> - ディープリンク（?photo_id=）のリダイレクト不具合修正。再入荷通知メールのリンク精度向上（登録元のギャラリーURLを反映）。</li>
-        <li><strong>v3.11.2</strong> - 再入荷通知機能の実装。売り切れ商品の在庫復活時に自動で登録者へメール通知。</li>
-        <li><strong>v3.11.1</strong> - 商品ラベルの色指定機能を追加。カラーピッカーとお気に入りボタンとの重なり調整。</li>
-        <li><strong>v3.11.0</strong> - 商品ラベル（リボン）機能の正式追加。</li>
-        <li><strong>v3.10.0</strong> - 会員規約（利用規約）自動生成機能の追加。ログインUIの最適化とSNSログインの優先表示。</li>
-        <li><strong>v3.9.0</strong> - インボイス制度対応（適格請求書発行事業者番号の設定機能）。税率別内訳の表示。</li>
-      </ul>
-    </section>
+      </section>
 
   </div>
 
