@@ -85,6 +85,28 @@ function photo_purchase_get_cart_details()
 				$price = get_post_meta($id, $price_key, true);
 			}
 
+			// Variation Overlay
+			$variation_id = isset($item['variation_id']) ? sanitize_text_field($item['variation_id']) : '';
+			$variation_name = '';
+			if ($variation_id) {
+				$variations = get_post_meta($id, '_photo_variation_skus', true);
+				if (is_array($variations)) {
+					foreach ($variations as $var) {
+						if ($var['variation_id'] === $variation_id) {
+							// For variations, we add the SKU-specific price to the base price
+							// OR replace it? Logic usually is "Price" field in variation is the surcharge or the total.
+							// In our admin-meta.php, it's treated as a replacement for the specific format price if we want, 
+							// but usually it's "Variation Price". Let's treat it as REPLACE for simplicity in this plugin's model.
+							if (!empty($var['price'])) {
+								$price = $var['price'];
+							}
+							$variation_name = $var['name'];
+							break;
+						}
+					}
+				}
+			}
+
 			$sub_requires_shipping = get_post_meta($id, '_photo_sub_requires_shipping', true) === '1';
 
 			$price_val = intval($price);
@@ -95,6 +117,8 @@ function photo_purchase_get_cart_details()
 			$data[] = array(
 				'id' => $id,
 				'format' => $format,
+				'variation_id' => $variation_id,
+				'variation_name' => $variation_name,
 				'title' => get_the_title($id),
 				'price' => $price_val,
 				'original_price' => intval($price),

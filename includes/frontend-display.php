@@ -247,12 +247,19 @@ function photo_purchase_gallery_shortcode($atts)
                 $gallery_data = htmlspecialchars(json_encode($gallery_urls), ENT_QUOTES, 'UTF-8');
                 $description = apply_filters('the_content', get_post_field('post_content', $post_id));
                 ?>
+                <?php
+                 $use_variations = get_post_meta($post_id, '_photo_use_variations', true) === '1';
+                 $variations_data = $use_variations ? get_post_meta($post_id, '_photo_variation_skus', true) : array();
+                 $variations_json = htmlspecialchars(json_encode($variations_data), ENT_QUOTES, 'UTF-8');
+                 ?>
                 <div class="photo-item <?php echo $is_sold_out ? 'is-sold-out' : ''; ?>" data-id="<?php echo $post_id; ?>" 
                      data-description="<?php echo esc_attr($description); ?>"
                      data-gallery='<?php echo $gallery_data; ?>'
                      data-sold-out="<?php echo $is_sold_out ? '1' : '0'; ?>"
                      data-manage-stock="<?php echo $manage_stock ? '1' : '0'; ?>"
-                     data-stock-qty="<?php echo $stock_qty; ?>">
+                     data-stock-qty="<?php echo $stock_qty; ?>"
+                     data-use-variations="<?php echo $use_variations ? '1' : '0'; ?>"
+                     data-variations='<?php echo $variations_json; ?>'>
                     <button class="fav-btn" data-id="<?php echo $post_id; ?>" title="<?php _e('お気に入りに追加', 'photo-purchase'); ?>">
                         <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
                     </button>
@@ -310,6 +317,48 @@ function photo_purchase_gallery_shortcode($atts)
                             <?php endif; ?>
                         </select>
                     </div>
+
+                    <?php if ($use_variations && !empty($variations_data)): 
+                        // Pro-tip: Pre-group attributes for separate selects
+                        $attr_groups = [];
+                        foreach ($variations_data as $v) {
+                            if (!empty($v['attrs']) && is_array($v['attrs'])) {
+                                foreach ($v['attrs'] as $a) {
+                                    $attr_groups[$a['name']][] = $a['value'];
+                                }
+                            }
+                        }
+                        foreach ($attr_groups as $name => $vals) {
+                            $attr_groups[$name] = array_unique($vals);
+                        }
+                    ?>
+                        <div class="ec-variation-selection-multi-wrap" 
+                             data-variations='<?php echo esc_attr(json_encode($variations_data)); ?>'
+                             style="margin-bottom: 15px; padding: 12px; background: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0;">
+                            
+                            <label style="font-weight: 800; font-size: 0.85em; color: #475569; display: block; margin-bottom: 10px;">
+                                <span class="dashicons dashicons-forms" style="font-size: 16px; width: 16px; height: 16px; vertical-align: middle;"></span>
+                                <?php _e('オプションを選択', 'photo-purchase'); ?>
+                            </label>
+
+                            <div class="ec-attribute-selects-grid" style="display: grid; gap: 10px;">
+                                <?php foreach ($attr_groups as $attr_name => $attr_values): ?>
+                                    <div class="ec-attr-row">
+                                        <div style="font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 4px;"><?php echo esc_html($attr_name); ?></div>
+                                        <select class="ec-attr-select" data-attr-name="<?php echo esc_attr($attr_name); ?>" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; font-size: 13px;">
+                                            <option value=""><?php echo sprintf(__('%sを選択', 'photo-purchase'), $attr_name); ?></option>
+                                            <?php foreach ($attr_values as $val): ?>
+                                                <option value="<?php echo esc_attr($val); ?>"><?php echo esc_html($val); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+
+                            <input type="hidden" class="ec-variation-id-input" name="variation_id" value="">
+                            <div class="ec-variation-status-msg" style="margin-top: 8px; font-size: 12px; font-weight: 600; min-height: 1.2em;"></div>
+                        </div>
+                    <?php endif; ?>
 
                     <div class="photo-price-anim-wrap" style="margin-bottom: 15px; font-size: 1.5rem; font-weight: 800; color: var(--pp-primary);">
                         <span class="price-symbol">¥</span><span class="photo-price-val">0</span>
@@ -406,6 +455,10 @@ function photo_purchase_gallery_shortcode($atts)
                                 <label><?php _e('数量:', 'photo-purchase'); ?></label>
                                 <input type="number" id="ec-quickview-qty" class="photo-qty" value="1" min="1">
                             </div>
+                        </div>
+
+                        <div id="ec-quickview-variation-wrap" style="display:none; margin-bottom: 15px;">
+                            <!-- Variation select will be cloned here -->
                         </div>
 
                         <div class="ec-quickview-price-wrap" style="margin: 20px 0;">

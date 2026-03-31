@@ -286,6 +286,17 @@ jQuery(document).ready(function ($) {
             });
         }
 
+        // --- Variation Quickview Support ---
+        var $qvVarWrap = $('#ec-quickview-variation-wrap');
+        var $originalVarWrap = $item.find('.ec-variation-selection-wrap');
+        if ($originalVarWrap.length) {
+            $qvVarWrap.html($originalVarWrap.clone()).show();
+            // Reset selection in modal
+            $qvVarWrap.find('.ec-variation-select').val('');
+        } else {
+            $qvVarWrap.hide().empty();
+        }
+
         updateItemSimulator($('.ec-quickview-layout'));
         $('#photo-lightbox').addClass('is-active');
     });
@@ -594,21 +605,116 @@ jQuery(document).ready(function ($) {
         var $priceDisplay = $item.find('.photo-price-val');
         
         var basePrice = parseInt($formatSelect.find('option:selected').data('price'), 10) || 0;
+        
+        // Variation Price Add-on
+        var $varSelect = $item.find('.ec-variation-select');
+        var varPrice = 0;
+        if ($varSelect.length) {
+            varPrice = parseInt($varSelect.find('option:selected').data('price'), 10) || 0;
+        }
+
         var extra = 0;
         $item.find('.custom-opt-check:checked').each(function() {
             extra += (parseInt($(this).val(), 10) || 0);
         });
         var qty = parseInt($qtyInput.val(), 10) || 1;
-        var total = (basePrice + extra) * qty;
+        var total = (basePrice + varPrice + extra) * qty;
+        
+        			if (v) {
+				// Update Price Display simulation
+				if (currentPrice) {
+					let newPrice = currentPrice + parseInt(v.price || 0);
+					$modal.find(".pp-modal-price").text("¥" + newPrice.toLocaleString());
+				}
+
+				// Real-time Stock Validation
+				const $addBtn = $modal.find(".photo-purchase-add-to-cart-btn");
+				const stock = parseInt(v.stock || 0);
+				
+				if (stock <= 0) {
+					$addBtn.prop("disabled", true)
+						   .css("opacity", "0.6")
+						   .text("売り切れ (Sold Out)");
+				} else {
+					$addBtn.prop("disabled", false)
+						   .css("opacity", "1")
+						   .text("カートに追加");
+				}
+			}
         
         if ($priceDisplay.length) {
             $priceDisplay.text(total.toLocaleString());
         }
     }
 
-    $(document).on('change', '.photo-format, .photo-qty, .custom-opt-check', function() {
+    $(document).on('change', '.photo-format, .photo-qty, .custom-opt-check, .ec-variation-select, .ec-variation-id-input', function() {
         var $item = $(this).closest('.photo-item, .ec-quickview-layout');
         updateItemSimulator($item);
+    });
+
+    // --- Multi-Attribute Variation Search ---
+    $(document).on('change', '.ec-attr-select', function() {
+        var $wrapper = $(this).closest('.ec-variation-selection-multi-wrap');
+        var variations = $wrapper.data('variations') || {};
+        var $statusMsg = $wrapper.find('.ec-variation-status-msg');
+        var $idInput = $wrapper.find('.ec-variation-id-input');
+        var $addBtn = $(this).closest('.photo-item, .ec-quickview-layout').find('.photo-purchase-add-to-cart-btn, .add-to-cart-btn, #ec-quickview-add-to-cart');
+        
+        // Collect current selections
+        var currentSelections = {};
+        var allSelected = true;
+        $wrapper.find('.ec-attr-select').each(function() {
+            var val = $(this).val();
+            var name = $(this).data('attr-name');
+            if (!val) {
+                allSelected = false;
+            } else {
+                currentSelections[name] = val;
+            }
+        });
+
+        if (!allSelected) {
+            $idInput.val('').data('current-v', null);
+            $statusMsg.text('オプションを選択してください').css('color', '#666');
+            $addBtn.prop('disabled', false).css('opacity', '1').text($addBtn.is('#ec-quickview-add-to-cart') ? 'カートに追加' : ($addBtn.hasClass('add-to-cart-btn') ? 'カートに追加' : 'カートに追加'));
+            return;
+        }
+
+        // Find match
+        var match = null;
+        for (var v_id in variations) {
+            var v = variations[v_id];
+            var v_matches = true;
+            // v.attrs example: [{name: "Color", value: "Red"}, {name: "Size", value: "S"}]
+            if (v.attrs && v.attrs.length > 0) {
+                v.attrs.forEach(function(a) {
+                    if (currentSelections[a.name] !== a.value) v_matches = false;
+                });
+            } else {
+                v_matches = false;
+            }
+            if (v_matches) {
+                match = v;
+                match.id = v_id;
+                break;
+            }
+        }
+
+        if (match) {
+            $idInput.val(match.id).data('current-v', match).trigger('change');
+            var stock = parseInt(match.stock || 0);
+            if (stock <= 0) {
+                $statusMsg.text('申し訳ございません。この組み合わせは売り切れです。').css('color', '#dc2626');
+                $addBtn.prop('disabled', true).css('opacity', '0.6').text('売り切れ (Sold Out)');
+            } else {
+                $statusMsg.text('在庫あり (残り ' + stock + '点)').css('color', '#16a34a');
+                $addBtn.prop('disabled', false).css('opacity', '1').text('カートに追加');
+            }
+        } else {
+            $idInput.val('').data('current-v', null).trigger('change');
+            $statusMsg.text('申し訳ございませんが、選択した組み合わせは存在しません。').css('color', '#dc2626');
+            $addBtn.prop('disabled', true).css('opacity', '0.6').text('選択不可');
+        }
     });
 
     // --- カート追加（通常） ---
@@ -640,12 +746,45 @@ jQuery(document).ready(function ($) {
             selectedOpts.push({ name: $(this).data('name'), group: $(this).data('group'), price: parseInt($(this).val(), 10) });
         });
 
+        // Variation Logic
+        var variationId = '';
+        var variationName = '';
+        var $varSelect = $item.find('.ec-variation-select');
+        var $varMultiInput = $item.find('.ec-variation-id-input');
+
+        if ($item.data('use-variations') == '1') {
+            if ($varMultiInput.length) {
+                variationId = $varMultiInput.val();
+                if (!variationId) { alert('オプション（カラー・サイズ等）をすべて選択してください。'); return; }
+                var vData = $varMultiInput.data('current-v');
+                variationName = vData ? vData.name : '';
+                var varStock = parseInt(vData ? vData.stock : 0, 10);
+            } else if ($varSelect.length) {
+                variationId = $varSelect.val();
+                if (!variationId) { alert('バリエーションを選択してください。'); return; }
+                variationName = $varSelect.find('option:selected').text().split('(')[0].trim();
+                var varStock = parseInt($varSelect.find('option:selected').data('stock'), 10);
+            }
+
+            if (variationId && qty > varStock) {
+                alert('選択したバリエーションの在庫が不足しています（残り' + varStock + '点）。'); return;
+            }
+        }
+
         var cart = getCart();
         var hasSub = cart.some(c => c.format === 'subscription');
         if (format === 'subscription' && cart.length > 0 && !hasSub) { alert('サブスクリプション商品は通常商品と一緒に購入できません。'); return; }
         if (format !== 'subscription' && hasSub) { alert('カート内にサブスクリプション商品が含まれています。'); return; }
 
-        cart.push({ id: photoId, format: format, qty: qty, options: selectedOpts, sub_requires_shipping: subReq == '1' });
+        cart.push({ 
+            id: photoId, 
+            format: format, 
+            qty: qty, 
+            options: selectedOpts, 
+            variation_id: variationId,
+            variation_name: variationName,
+            sub_requires_shipping: subReq == '1' 
+        });
         saveCart(cart);
         openDrawer();
     });
@@ -667,11 +806,45 @@ jQuery(document).ready(function ($) {
             selectedOpts.push({ name: $(this).data('name'), group: $(this).data('group'), price: parseInt($(this).val(), 10) });
         });
 
+        // Variation Logic (Quickview)
+        var variationId = '';
+        var variationName = '';
+        var $varSelect = $modal.find('.ec-variation-select');
+        var $varMultiInput = $modal.find('.ec-variation-id-input');
+        var $itemRef = $('.photo-item[data-id="' + photoId + '"]');
+        
+        if ($itemRef.data('use-variations') == '1') {
+            if ($varMultiInput.length) {
+                variationId = $varMultiInput.val();
+                if (!variationId) { alert('オプションをすべて選択してください。'); return; }
+                var vData = $varMultiInput.data('current-v');
+                variationName = vData ? vData.name : '';
+                var varStock = parseInt(vData ? vData.stock : 0, 10);
+            } else if ($varSelect.length) {
+                variationId = $varSelect.val();
+                if (!variationId) { alert('バリエーションを選択してください。'); return; }
+                variationName = $varSelect.find('option:selected').text().split('(')[0].trim();
+                var varStock = parseInt($varSelect.find('option:selected').data('stock'), 10);
+            }
+
+            if (variationId && qty > varStock) {
+                alert('在庫が不足しています（残り' + varStock + '点）。'); return;
+            }
+        }
+
         var cart = getCart();
         var hasSub = cart.some(c => c.format === 'subscription');
         if (format === 'subscription' && cart.length > 0 && !hasSub) { alert('サブスク商品と通常商品は同時購入できません。'); return; }
 
-        cart.push({ id: photoId, format: format, qty: qty, options: selectedOpts, sub_requires_shipping: subReq == '1' });
+        cart.push({ 
+            id: photoId, 
+            format: format, 
+            qty: qty, 
+            options: selectedOpts, 
+            variation_id: variationId,
+            variation_name: variationName,
+            sub_requires_shipping: subReq == '1' 
+        });
         saveCart(cart);
         $('#photo-lightbox').removeClass('is-active');
         openDrawer();

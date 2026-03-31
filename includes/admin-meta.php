@@ -115,10 +115,157 @@ function photo_purchase_meta_box_callback($post)
 				$("#stock_qty_wrap").slideUp(200);
 			}
 		});
+
+		$("#photo_use_variations").change(function() {
+			if ($(this).is(":checked")) {
+				$("#variation_manager_wrap").slideDown(200);
+				$("#stock_qty_wrap_main").slideUp(200);
+			} else {
+				$("#variation_manager_wrap").slideUp(200);
+				$("#stock_qty_wrap_main").slideDown(200);
+			}
+		});
 	});
 	</script>';
+	echo '</div>'; // End stock_qty_wrap_main
+
+	// --- SKU / Variation Management (v4.1.0) ---
+	$use_variations = get_post_meta($post->ID, '_photo_use_variations', true);
+	$variations = get_post_meta($post->ID, '_photo_variation_skus', true) ?: array();
+
+	echo '<div style="margin-top:10px; padding-top:10px; border-top:1px dashed #ddd;">';
+	echo '<label><input type="checkbox" id="photo_use_variations" name="photo_use_variations" value="1" ' . checked($use_variations, '1', false) . '> <strong>' . __('バリエーション別の在庫管理を行う (SKU)', 'photo-purchase') . '</strong></label>';
+	echo '<div id="variation_manager_wrap" style="margin-top:15px; padding:15px; background:#f9fbff; border:1px solid #c2e0ff; border-radius:8px; ' . ($use_variations === '1' ? '' : 'display:none;') . '">';
+	
+	echo '<div style="margin-bottom:15px; border-bottom:1px solid #eee; padding-bottom:10px;">';
+	echo '<strong>1. 属性の定義 (例: サイズ, カラー)</strong><br>';
+	echo '<p class="description">カンマ区切りで値を入力してください（例: S, M, L）</p>';
+	echo '<div id="ec_attribute_rows">';
+	echo '<div class="attr-row" style="display:flex; gap:10px; margin-bottom:5px;">';
+	echo '<input type="text" class="attr-name" placeholder="属性名 (例: サイズ)" style="width:120px;">';
+	echo '<input type="text" class="attr-values" placeholder="値 (例: S, M, L)" style="flex:1;">';
 	echo '</div>';
-	echo '</div>'; // End Sold Out Setting div (Line 86)
+	echo '<div class="attr-row" style="display:flex; gap:10px; margin-bottom:5px;">';
+	echo '<input type="text" class="attr-name" placeholder="属性名 (例: カラー)" style="width:120px;">';
+	echo '<input type="text" class="attr-values" placeholder="値 (例: 赤, 青)" style="flex:1;">';
+	echo '</div>';
+	echo '</div>';
+	?>
+	<div style="margin-top:15px; background:#f9f9f9; padding:10px; border:1px solid #ddd; border-radius:4px;">
+		<h4 style="margin-top:0;">一括設定 (Bulk Actions)</h4>
+		<div style="display:flex; gap:15px; align-items:flex-end; flex-wrap:wrap;">
+			<div>
+				<label style="display:block; font-size:12px;">一括価格設定 (+加算額)</label>
+				<input type="number" id="bulk_v_price" value="0" style="width:100px;">
+				<button type="button" id="apply_bulk_price" class="button">価格を一括適用</button>
+			</div>
+			<div>
+				<label style="display:block; font-size:12px;">SKUプレフィックス</label>
+				<input type="text" id="bulk_v_sku_prefix" placeholder="ITEM-RED-" style="width:120px;">
+				<button type="button" id="apply_bulk_sku" class="button">SKUを一括生成</button>
+			</div>
+			<div style="flex-grow:1; text-align:right;">
+				<button type="button" id="ec_generate_variations" class="button button-primary">組み合わせを自動生成</button>
+			</div>
+		</div>
+	</div>
+
+	<strong>2. バリエーション一覧</strong>
+	<div id="ec_variation_list" style="margin-top:10px; display:grid; gap:10px;">
+		<?php
+		foreach ($variations as $v_id => $v) {
+			echo photo_purchase_render_variation_row($v_id, $v);
+		}
+		?>
+	</div>
+	<p class="description" style="margin-top:10px;">※生成ボタンを押すと現在のリストが上書きされます。個別に価格や在庫を調整してください。</p>
+	</div>
+
+	<script>
+	jQuery(document).ready(function($) {
+		$("#ec_generate_variations").click(function() {
+			if (!confirm("現在のバリエーションリストがリセットされます。よろしいですか？")) return;
+			
+			var attributes = [];
+			$(".attr-row").each(function() {
+				var name = $(this).find(".attr-name").val().trim();
+				var values = $(this).find(".attr-values").val().split(",").map(s => s.trim()).filter(s => s !== "");
+				if (name && values.length > 0) {
+					attributes.push({ name: name, values: values });
+				}
+			});
+
+			if (attributes.length === 0) {
+				alert("属性名と値を入力してください。");
+				return;
+			}
+
+			function cartesian(args) {
+				var r = [], max = args.length-1;
+				function helper(arr, i) {
+					for (var j=0, l=args[i].values.length; j<l; j++) {
+						var a = arr.slice();
+						a.push({ name: args[i].name, value: args[i].values[j] });
+						if (i==max) r.push(a);
+						else helper(a, i+1);
+					}
+				}
+				helper([], 0);
+				return r;
+			}
+
+			var combinations = cartesian(attributes);
+			var $list = $("#ec_variation_list");
+			$list.empty();
+
+			combinations.forEach(function(combo, idx) {
+				var v_id = "v_" + Date.now() + "_" + idx;
+				var name = combo.map(c => c.value).join(" / ");
+				var attr_str = JSON.stringify(combo);
+				
+				var row = `<div class="variation-row" style="display:grid; grid-template-columns: 2fr 1fr 1fr 40px; gap:10px; align-items:center; background:#fff; padding:10px; border:1px solid #ddd; border-radius:4px;">
+					<div>
+                        <strong>${name}</strong>
+                        <input type="hidden" name="v_name[]" value="${name}">
+                        <input type="hidden" name="v_id[]" value="${v_id}">
+                        <input type="hidden" name="v_attrs[]" value='${attr_str}'>
+                        <div style="font-size:10px; color:#666; margin-top:4px;">SKU: <input type="text" name="v_sku[]" value="" placeholder="自動付与可" style="width:100px; font-size:10px; padding:2px;"></div>
+                    </div>
+					<div>在庫: <input type="number" name="v_stock[]" value="10" style="width:60px;"></div>
+					<div>価格: <input type="number" name="v_price[]" value="0" style="width:80px;"> <span style="font-size:10px; color:#666;">(+加算)</span></div>
+					<button type="button" class="remove-variation button" style="color:red; border:none; background:none; font-size:18px; cursor:pointer;">&times;</button>
+				</div>`;
+				$list.append(row);
+			});
+		});
+
+		$(document).on("click", ".remove-variation", function() {
+			if(confirm("このバリエーションを削除しますか？")) {
+				$(this).closest(".variation-row").remove();
+			}
+		});
+
+		$("#apply_bulk_price").on("click", function() {
+			const price = $("#bulk_v_price").val();
+			if(confirm("すべてのバリエーションの価格を " + price + " 円に設定しますか？")) {
+				$("input[name='v_price[]']").val(price);
+			}
+		});
+
+		$("#apply_bulk_sku").on("click", function() {
+			const prefix = $("#bulk_v_sku_prefix").val();
+			if(!prefix) return alert("プレフィックスを入力してください");
+			
+			$(".variation-row").each(function(index) {
+				const $input = $(this).find("input[name='v_sku[]']");
+				$input.val(prefix + (index + 1).toString().padStart(3, '0'));
+			});
+		});
+	});
+	</script>
+	<?php
+	echo '</div>'; // End variation_manager_wrap section
+	echo '</div>'; // End parent wrapper for stock
 
 	echo '<div style="margin-top:15px; border-top:1px solid #eee; padding-top:15px; grid-column: span 3;">';
 	$product_label = get_post_meta($post->ID, '_photo_product_label', true);
@@ -482,6 +629,33 @@ function photo_purchase_save_meta($post_id)
 		delete_post_meta($post_id, '_photo_custom_options');
 	}
 
+	// Save Variation info (v4.1.0)
+	$use_vars = isset($_POST['photo_use_variations']) ? '1' : '0';
+	update_post_meta($post_id, '_photo_use_variations', $use_vars);
+
+	if (isset($_POST['v_id']) && is_array($_POST['v_id'])) {
+		$variations = array();
+		foreach ($_POST['v_id'] as $i => $v_id) {
+			$v_id = sanitize_text_field($v_id);
+			$name = sanitize_text_field($_POST['v_name'][$i]);
+			$stock = intval($_POST['v_stock'][$i]);
+			$price = intval($_POST['v_price'][$i]);
+			$sku = sanitize_text_field($_POST['v_sku'][$i] ?? '');
+			$attrs = json_decode(stripslashes($_POST['v_attrs'][$i]), true);
+
+			$variations[$v_id] = array(
+				'name' => $name,
+				'stock' => $stock,
+				'price' => $price,
+				'sku' => $sku,
+				'attrs' => $attrs
+			);
+		}
+		update_post_meta($post_id, '_photo_variation_skus', $variations);
+	} else {
+		delete_post_meta($post_id, '_photo_variation_skus');
+	}
+
 	// Check for stock alert
 	if (function_exists('photo_purchase_check_stock_alert')) {
 		photo_purchase_check_stock_alert($post_id);
@@ -701,6 +875,32 @@ function photo_purchase_render_option_row_v5($name, $price, $type, $group, $cate
 	$html .= '</div>';
 	
 	$html .= '<button type="button" class="remove-opt button" style="color:red; align-self:flex-end;">&times;</button>';
+	$html .= '</div>';
+	
+	return $html;
+}
+
+/**
+ * Render Variation Row (Helper v4.1.0)
+ */
+function photo_purchase_render_variation_row($v_id, $v) {
+	$name = esc_attr($v['name']);
+	$stock = intval($v['stock'] ?? 0);
+	$price = intval($v['price'] ?? 0);
+	$sku = esc_attr($v['sku'] ?? '');
+	$attrs_json = esc_attr(json_encode($v['attrs'] ?? []));
+
+	$html = '<div class="variation-row" style="display:grid; grid-template-columns: 2fr 1fr 1fr 40px; gap:10px; align-items:center; background:#fff; padding:10px; border:1px solid #ddd; border-radius:4px;">';
+	$html .= '<div>';
+	$html .= '<strong>' . $name . '</strong>';
+	$html .= '<input type="hidden" name="v_name[]" value="' . $name . '">';
+	$html .= '<input type="hidden" name="v_id[]" value="' . esc_attr($v_id) . '">';
+	$html .= '<input type="hidden" name="v_attrs[]" value=\'' . $attrs_json . '\'>';
+	$html .= '<div style="font-size:10px; color:#666; margin-top:4px;">SKU: <input type="text" name="v_sku[]" value="' . $sku . '" placeholder="自動付与可" style="width:100px; font-size:10px; padding:2px;"></div>';
+	$html .= '</div>';
+	$html .= '<div>在庫: <input type="number" name="v_stock[]" value="' . $stock . '" style="width:60px;"></div>';
+	$html .= '<div>価格: <input type="number" name="v_price[]" value="' . $price . '" style="width:80px;"> <span style="font-size:10px; color:#666;">(+加算)</span></div>';
+	$html .= '<button type="button" class="remove-variation button" style="color:red; border:none; background:none; font-size:18px; cursor:pointer;">&times;</button>';
 	$html .= '</div>';
 	
 	return $html;

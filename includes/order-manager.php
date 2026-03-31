@@ -66,6 +66,22 @@ function photo_purchase_save_order($order_token, &$order_data)
             $price = get_post_meta($item['id'], $price_key, true);
             $has_physical = true;
         }
+
+        // Variation Logic: Override price if variation_id exists
+        if (!empty($item['variation_id'])) {
+            $variations = get_post_meta($item['id'], '_photo_variation_skus', true);
+            if (is_array($variations)) {
+                foreach ($variations as $var) {
+                    if ($var['variation_id'] === $item['variation_id']) {
+                        if (!empty($var['price'])) {
+                            $price = $var['price'];
+                        }
+                        $item['variation_name'] = $var['name']; // Ensure name is in item array
+                        break;
+                    }
+                }
+            }
+        }
         
         // Determine tax rate for this item
         $tax_type = get_post_meta($item['id'], '_photo_tax_type', true) ?: 'standard';
@@ -274,16 +290,45 @@ function photo_purchase_save_order($order_token, &$order_data)
         foreach ($order_data['items'] as $item) {
             $product_id = intval($item['id']);
             $qty = intval($item['qty']);
-            $manage_stock = get_post_meta($product_id, '_photo_manage_stock', true);
-            if ($manage_stock === '1') {
-                $current_stock = intval(get_post_meta($product_id, '_photo_stock_qty', true));
-                $new_stock = max(0, $current_stock - $qty);
-                update_post_meta($product_id, '_photo_stock_qty', $new_stock);
-                
-                // Check for stock alert
-                if (function_exists('photo_purchase_check_stock_alert')) {
-                    photo_purchase_check_stock_alert($product_id);
+            $variation_id = $item['variation_id'] ?? '';
+
+            if ($variation_id) {
+                // SKU-level stock decrement
+                $variations = get_post_meta($product_id, '_photo_variation_skus', true);
+                if (is_array($variations)) {
+                    $updated = false;
+                    foreach ($variations as &$var) {
+                        if ($var['variation_id'] === $variation_id) {
+                            $current_v_stock = intval($var['stock'] ?? 0);
+                            // Atomic-like check: Skip if already sold out (race condition)
+                            if ($current_v_stock < $qty) {
+                                // Log or handle if necessary, but here we just take what we can
+                                $qty_to_deduct = $current_v_stock;
+                            } else {
+                                $qty_to_deduct = $qty;
+                            }
+                            $var['stock'] = max(0, $current_v_stock - $qty_to_deduct);
+                            $updated = true;
+                            break;
+                        }
+                    }
+                    if ($updated) {
+                        update_post_meta($product_id, '_photo_variation_skus', $variations);
+                    }
                 }
+            } else {
+                // Product-level stock decrement
+                $manage_stock = get_post_meta($product_id, '_photo_manage_stock', true);
+                if ($manage_stock === '1') {
+                    $current_stock = intval(get_post_meta($product_id, '_photo_stock_qty', true));
+                    $new_stock = max(0, $current_stock - $qty);
+                    update_post_meta($product_id, '_photo_stock_qty', $new_stock);
+                }
+            }
+
+            // Global stock alert check (still useful for general awareness)
+            if (function_exists('photo_purchase_check_stock_alert')) {
+                photo_purchase_check_stock_alert($product_id);
             }
         }
 
@@ -365,8 +410,9 @@ function photo_purchase_send_admin_notification($token, $data, $total)
         $price = isset($item['price']) ? intval($item['price']) : 0;
         $items_subtotal += ($price + $opt_p) * $qty;
         $fmt_label = photo_purchase_get_format_label($format);
+        $var_label = !empty($item['variation_name']) ? " (" . $item['variation_name'] . ")" : "";
         
-        $message .= get_the_title($photo_id) . "\n";
+        $message .= get_the_title($photo_id) . $var_label . "\n";
         $message .= "形式: " . $fmt_label . " / 数量: " . $qty . "\n";
         if ($opt_list) $message .= $opt_list;
         $message .= "\n";
@@ -505,8 +551,9 @@ function photo_purchase_send_buyer_notification($token, $data, $total)
         $price = isset($item['price']) ? intval($item['price']) : 0;
         $items_subtotal += ($price + $opt_p) * $qty;
         $fmt_label = photo_purchase_get_format_label($format);
+        $var_label = !empty($item['variation_name']) ? " (" . $item['variation_name'] . ")" : "";
         
-        $message .= get_the_title($photo_id) . "\n";
+        $message .= get_the_title($photo_id) . $var_label . "\n";
         $message .= "形式: " . $fmt_label . " / 数量: " . $qty . "\n";
         if ($opt_list) $message .= $opt_list;
         $message .= "\n";
