@@ -59,3 +59,105 @@
 .photo-dashboard-stats .dashicons {
     margin-bottom: 5px;
 }
+
+/* Sortable Table Rows */
+.wp-list-table.posts .photo-drag-handle {
+	cursor: move;
+	color: #ccd0d4;
+	font-size: 20px;
+	width: 30px;
+	height: 30px;
+	display: flex !important;
+	align-items: center;
+	justify-content: center;
+}
+.wp-list-table.posts .photo-drag-handle:hover {
+	color: #2271b1;
+}
+.wp-list-table.posts .ui-sortable-helper {
+	background: #fff;
+	box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+	display: table !important;
+}
+.wp-list-table.posts .ui-sortable-placeholder {
+	background: #f0f0f1;
+	visibility: visible !important;
+	height: 50px !important;
+}
+
+/* Duplicated Row Animation */
+@keyframes photo-fade-highlight {
+	0% { background-color: #fff9e6; }
+	100% { background-color: transparent; }
+}
+.photo-row-duplicated {
+	animation: photo-fade-highlight 3s ease-out;
+}
+
+/* Row Actions */
+.row-actions .duplicate a {
+	color: #2271b1 !important;
+	font-weight: 600;
+}
+
+/* Animations */
+@keyframes photo-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+.spin {
+    animation: photo-spin 1s linear infinite;
+    display: inline-block;
+}
+
+/* Sortable state */
+.ui-sortable-helper td {
+    background: #fff;
+    border-top: 1px solid #ddd;
+    border-bottom: 1px solid #ddd;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+}
+.ui-sortable-placeholder {
+    background: #f0f0f1 !important;
+    visibility: visible !important;
+}
+
+/* Sortable Table Rows */
+.wp-list-table.posts .photo-drag-handle {
+	cursor: move;
+	color: #ccd0d4;
+	font-size: 20px;
+	width: 30px;
+	height: 30px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.wp-list-table.posts .photo-drag-handle:hover {
+	color: #2271b1;
+}
+.wp-list-table.posts .ui-sortable-helper {
+	background: #fff;
+	box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+	display: table !important;
+}
+.wp-list-table.posts .ui-sortable-placeholder {
+	background: #f0f0f1;
+	visibility: visible !important;
+	height: 50px !important;
+}
+
+/* Duplicated Row Animation */
+@keyframes photo-fade-highlight {
+	0% { background-color: #fff9e6; }
+	100% { background-color: transparent; }
+}
+.photo-row-duplicated {
+	animation: photo-fade-highlight 3s ease-out;
+}
+
+/* Row Actions */
+.row-actions .duplicate a {
+	color: #2271b1;
+	font-weight: 600;
+}

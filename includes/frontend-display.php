@@ -47,8 +47,8 @@ function photo_purchase_gallery_shortcode($atts)
             break;
         case 'newness':
         default:
-            $args['orderby'] = 'date';
-            $args['order'] = 'DESC';
+            $args['orderby'] = 'menu_order';
+            $args['order'] = 'ASC';
             break;
     }
 

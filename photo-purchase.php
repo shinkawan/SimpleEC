@@ -148,7 +148,7 @@ function photo_purchase_register_post_type()
 		'has_archive' => false,
 		'hierarchical' => false,
 		'menu_position' => 5,
-		'supports' => array('title', 'editor', 'thumbnail'),
+		'supports' => array('title', 'editor', 'thumbnail', 'page-attributes'),
 		'menu_icon' => 'dashicons-cart',
 		'exclude_from_search' => true,
 	);
@@ -211,8 +211,167 @@ function photo_purchase_admin_menus()
 		'photo-purchase-logs',
 		'photo_purchase_log_page'
 	);
+	add_action('admin_action_photo_purchase_duplicate_product', 'photo_purchase_handle_duplicate_product');
 }
 add_action('admin_menu', 'photo_purchase_admin_menus');
+
+/**
+ * Add "Duplicate" action to post row actions
+ */
+add_filter('post_row_actions', 'photo_purchase_add_duplicate_link', 10, 2);
+function photo_purchase_add_duplicate_link($actions, $post) {
+	if ($post->post_type !== 'photo_product') return $actions;
+	
+	$url = wp_nonce_url(
+		admin_url('admin.php?action=photo_purchase_duplicate_product&post_id=' . $post->ID),
+		'photo_duplicate_product_' . $post->ID
+	);
+	
+	$actions['duplicate'] = '<a href="' . $url . '" title="' . esc_attr__('複製して新しい商品を作成', 'photo-purchase') . '">' . __('複製', 'photo-purchase') . '</a>';
+	return $actions;
+}
+
+/**
+ * Handle Product Duplication
+ */
+function photo_purchase_handle_duplicate_product() {
+	if (!isset($_GET['post_id'])) wp_die('No product ID provided.');
+	
+	$post_id = intval($_GET['post_id']);
+	check_admin_referer('photo_duplicate_product_' . $post_id);
+	
+	if (!current_user_can('edit_posts')) wp_die('Unauthorized');
+
+	$post = get_post($post_id);
+	if (!$post || $post->post_type !== 'photo_product') wp_die('Invalid product.');
+
+	// Create new post data
+	$new_post_args = array(
+		'post_title' => $post->post_title . ' - コピー',
+		'post_content' => $post->post_content,
+		'post_status' => 'draft',
+		'post_type' => $post->post_type,
+		'post_author' => get_current_user_id()
+	);
+
+	$new_post_id = wp_insert_post($new_post_args);
+
+	if ($new_post_id) {
+		// Copy Taxonomy (Categories)
+		$terms = wp_get_object_terms($post_id, 'photo_event');
+		if (!empty($terms)) {
+			$term_ids = array();
+			foreach ($terms as $t) { $term_ids[] = $t->term_id; }
+			wp_set_object_terms($new_post_id, $term_ids, 'photo_event');
+		}
+
+		// Copy Meta Data
+		$meta_data = get_post_meta($post_id);
+		foreach ($meta_data as $key => $values) {
+			// Skip internal WP keys and restock lists
+			if (in_array($key, array('_photo_restock_emails'))) continue;
+			
+			foreach ($values as $val) {
+				// dbDelta/wp_insert_post might handle some keys, but we want all _photo_ and _ec_
+				if (strpos($key, '_photo_') === 0 || strpos($key, '_ec_') === 0 || $key === '_thumbnail_id') {
+					update_post_meta($new_post_id, $key, maybe_unserialize($val));
+				}
+			}
+		}
+
+		photo_purchase_log('info', '商品を複製しました。', array('source' => $post_id, 'new' => $new_post_id));
+		wp_redirect(admin_url('edit.php?post_type=photo_product&duplicated=' . $new_post_id));
+		exit;
+	} else {
+		wp_die('Failed to duplicate product.');
+	}
+}
+
+/**
+ * Product List Columns
+ */
+add_filter('manage_photo_product_posts_columns', 'photo_purchase_add_product_columns');
+function photo_purchase_add_product_columns($columns) {
+	$new_columns = array();
+	foreach($columns as $key => $value) {
+		if ($key === 'title') {
+			$new_columns['photo_thumb'] = '画像';
+		}
+		$new_columns[$key] = $value;
+		if ($key === 'title') {
+			$new_columns['photo_price'] = '販売価格';
+			$new_columns['photo_stock'] = '在庫';
+		}
+	}
+	$new_columns['photo_order'] = '順序'; // Drag handle column
+	return $new_columns;
+}
+
+add_action('manage_photo_product_posts_custom_column', 'photo_purchase_render_product_columns', 10, 2);
+function photo_purchase_render_product_columns($column, $post_id) {
+	switch ($column) {
+		case 'photo_thumb':
+			echo get_the_post_thumbnail($post_id, array(50, 50), array('style' => 'border-radius:4px;'));
+			break;
+		case 'photo_price':
+			$p_l = get_post_meta($post_id, '_photo_price_l', true);
+			$p_sub = get_post_meta($post_id, '_photo_price_subscription', true);
+			if ($p_sub) {
+				echo 'サブスク: ¥' . number_format($p_sub);
+			} elseif ($p_l) {
+				echo '¥' . number_format($p_l);
+			} else {
+				echo '-';
+			}
+			break;
+		case 'photo_stock':
+			$manage = get_post_meta($post_id, '_photo_manage_stock', true);
+			if ($manage === '1') {
+				$qty = intval(get_post_meta($post_id, '_photo_stock_qty', true));
+				$color = ($qty <= 5) ? '#d63638' : '#2271b1';
+				echo '<strong style="color:'.$color.';">' . $qty . '</strong>';
+			} else {
+				echo '<span style="color:#999;">制限なし</span>';
+			}
+			break;
+		case 'photo_order':
+			echo '<span class="dashicons dashicons-move photo-drag-handle" style="cursor:move; color:#ccc;"></span>';
+			echo '<input type="hidden" class="photo-item-id" value="' . $post_id . '">';
+			break;
+	}
+}
+
+add_filter('manage_edit-photo_product_sortable_columns', 'photo_purchase_sortable_product_columns');
+function photo_purchase_sortable_product_columns($columns) {
+	$columns['photo_price'] = 'photo_price';
+	$columns['photo_stock'] = 'photo_stock';
+	$columns['photo_order'] = 'menu_order';
+	return $columns;
+}
+
+/**
+ * Handle Sorting AJAX
+ */
+add_action('wp_ajax_photo_purchase_update_order', 'photo_purchase_update_order_callback');
+function photo_purchase_update_order_callback() {
+	check_ajax_referer('photo_update_order_nonce', 'nonce');
+	if (!current_user_can('edit_posts')) wp_send_json_error('Unauthorized');
+
+	$order = isset($_POST['order']) ? array_map('intval', $_POST['order']) : array();
+	
+	if (!empty($order)) {
+		global $wpdb;
+		foreach ($order as $index => $post_id) {
+			$wpdb->update(
+				$wpdb->posts,
+				array('menu_order' => $index),
+				array('ID' => $post_id)
+			);
+		}
+		wp_send_json_success();
+	}
+	wp_send_json_error('Invalid data');
+}
 
 // CSV エクスポート/インポート ハンドラ登録
 add_action('admin_post_photo_purchase_export_products_csv', 'photo_purchase_handle_export_products_csv');
@@ -1390,11 +1549,52 @@ add_action('wp_enqueue_scripts', 'photo_purchase_enqueue_assets');
  */
 function photo_purchase_enqueue_admin_assets($hook)
 {
-	if (strpos($hook, 'photo_product') !== false || strpos($hook, 'photo-purchase') !== false) {
+	$screen = get_current_screen();
+	if (!$screen) return;
+
+	if (strpos($hook, 'photo_product') !== false || strpos($hook, 'photo-purchase') !== false || $screen->post_type === 'photo_product') {
 		wp_enqueue_style('photo-purchase-admin', PHOTO_PURCHASE_URL . 'assets/css/admin.css', array(), PHOTO_PURCHASE_VERSION);
+		
+		// Enqueue Sorting Script on Product List
+		if ($screen->id === 'edit-photo_product') {
+			wp_enqueue_script('jquery-ui-sortable');
+			wp_enqueue_script('photo-purchase-admin-sort', PHOTO_PURCHASE_URL . 'assets/js/admin-sort.js', array('jquery', 'jquery-ui-sortable'), PHOTO_PURCHASE_VERSION, true);
+			wp_localize_script('photo-purchase-admin-sort', 'photoSortData', array(
+				'nonce' => wp_create_nonce('photo_update_order_nonce')
+			));
+		}
 	}
 }
 add_action('admin_enqueue_scripts', 'photo_purchase_enqueue_admin_assets');
+
+/**
+ * Force menu_order sorting for photo_product
+ */
+add_action('pre_get_posts', 'photo_purchase_force_menu_order');
+function photo_purchase_force_menu_order($query) {
+    if (!is_admin() && $query->is_main_query() && is_post_type_archive('photo_product')) {
+        $query->set('orderby', 'menu_order');
+        $query->set('order', 'ASC');
+    }
+    
+    if (is_admin() && $query->get('post_type') === 'photo_product') {
+        if ($query->get('orderby') === '' || $query->get('orderby') === 'date') {
+            $query->set('orderby', 'menu_order');
+            $query->set('order', 'ASC');
+        }
+    }
+}
+
+/**
+ * Highlight duplicated items in post list
+ */
+add_filter('post_class', 'photo_purchase_highlight_duplicated_post', 10, 3);
+function photo_purchase_highlight_duplicated_post($classes, $class, $post_id) {
+    if (isset($_GET['duplicated']) && intval($_GET['duplicated']) === $post_id) {
+        $classes[] = 'photo-row-duplicated';
+    }
+    return $classes;
+}
 
 /**
  * Get Regions and Prefectures
