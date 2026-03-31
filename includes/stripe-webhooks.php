@@ -16,48 +16,17 @@ function photo_purchase_handle_stripe_webhook() {
         $webhook_secret = get_option('photo_pp_stripe_webhook_secret', '');
 
         // Webhook Signature Verification
-        if ($webhook_secret && $sig_header) {
-            $parts = explode(',', $sig_header);
-            $timestamp = '';
-            $signature_v1 = '';
-            foreach ($parts as $part) {
-                $pair = explode('=', $part, 2);
-                if (count($pair) === 2) {
-                    if (trim($pair[0]) === 't') $timestamp = trim($pair[1]);
-                    if (trim($pair[0]) === 'v1') $signature_v1 = trim($pair[1]);
-                }
-            }
-
-            if (!$timestamp || !$signature_v1) {
-                photo_purchase_log('error', 'Stripe Webhook: タイムスタンプまたは署名(v1)が不足しています。', array('sig' => $sig_header));
-                http_response_code(400);
-                exit;
-            }
-
-            // Verify timestamp age (allow 5 minutes drift)
-            if (abs(time() - intval($timestamp)) > 300) {
-                photo_purchase_log('error', 'Stripe Webhook: タイムスタンプの期限切れです。', array('t' => $timestamp, 'now' => time()));
-                http_response_code(400);
-                exit;
-            }
-
-            $signed_payload = $timestamp . '.' . $payload;
-            $expected_sig = hash_hmac('sha256', $signed_payload, $webhook_secret);
-
-            if (!hash_equals($expected_sig, $signature_v1)) {
-                photo_purchase_log('error', 'Stripe Webhook: 署名検証に失敗しました。', array('expected' => $expected_sig, 'v1' => $signature_v1));
+        if ($webhook_secret) {
+            $is_valid = photo_purchase_verify_stripe_signature($payload, $sig_header, $webhook_secret);
+            if (!$is_valid) {
                 http_response_code(401);
                 exit;
             }
-        } elseif ($webhook_secret) {
-            photo_purchase_log('error', 'Stripe Webhook: 署名ヘッダーが見つかりません。');
-            http_response_code(400);
-            exit;
         }
 
         $event = json_decode($payload, true);
         if (!$event || !isset($event['type'])) {
-            photo_purchase_log('error', 'Stripe Webhook: ペイロードの解析に失敗しました。');
+            photo_purchase_log('error', 'Stripe Webhook: ペイロードの解析に失敗しました。', array('payload' => substr($payload, 0, 500)));
             http_response_code(400);
             exit;
         }
@@ -164,4 +133,62 @@ function photo_purchase_send_admin_sub_cancel_notification($order) {
     $message .= "\n---\n" . $footer;
     
     wp_mail($admin_email, $subject, $message, $headers);
+}
+
+/**
+ * Helper: Verify Stripe Webhook Signature (Standardized Native Implementation)
+ */
+function photo_purchase_verify_stripe_signature($payload, $sig_header, $secret, $tolerance = 300) {
+    if (empty($sig_header)) {
+        photo_purchase_log('error', 'Stripe Webhook: 署名ヘッダーが空です。');
+        return false;
+    }
+
+    $parts = explode(',', $sig_header);
+    $timestamp = '';
+    $signatures = array();
+
+    foreach ($parts as $part) {
+        $pair = explode('=', $part, 2);
+        if (count($pair) === 2) {
+            $key = trim($pair[0]);
+            $val = trim($pair[1]);
+            if ($key === 't') $timestamp = $val;
+            if ($key === 'v1') $signatures[] = $val;
+        }
+    }
+
+    if (empty($timestamp) || empty($signatures)) {
+        photo_purchase_log('error', 'Stripe Webhook: 必要な署名要素 (t or v1) が欠落しています。', array('header' => $sig_header));
+        return false;
+    }
+
+    // Verify timestamp age
+    if ($tolerance > 0 && abs(time() - intval($timestamp)) > $tolerance) {
+        photo_purchase_log('error', 'Stripe Webhook: タイムスタンプが許容範囲外です。', array('t' => $timestamp, 'now' => time()));
+        return false;
+    }
+
+    // Calculate expected signature
+    $signed_payload = $timestamp . '.' . $payload;
+    $expected_sig = hash_hmac('sha256', $signed_payload, $secret);
+
+    // Stripe can send multiple v1 signatures for rollover; check if any matches
+    $found = false;
+    foreach ($signatures as $sig) {
+        if (hash_equals($expected_sig, $sig)) {
+            $found = true;
+            break;
+        }
+    }
+
+    if (!$found) {
+        photo_purchase_log('error', 'Stripe Webhook: 署名の検証に失敗しました。一致するv1署名がありません。', array(
+            'expected' => $expected_sig,
+            'provided_count' => count($signatures)
+        ));
+        return false;
+    }
+
+    return true;
 }

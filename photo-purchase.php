@@ -731,13 +731,14 @@ function photo_purchase_settings_page()
 								class="regular-text"></td>
 					</tr>
 					<tr>
-						<th><label for="stripe_webhook_secret"><?php _e('Webhookシークレット', 'photo-purchase'); ?></label></th>
+						<th><label for="stripe_webhook_secret"><?php _e('Webhook署名シークレット', 'photo-purchase'); ?></label></th>
 						<td>
 							<input type="password" name="stripe_webhook_secret" id="stripe_webhook_secret"
 								value="<?php echo esc_attr(get_option('photo_pp_stripe_webhook_secret', '')); ?>"
 								class="regular-text">
 							<p class="description">
-								Stripeダッシュボードで設定したWebhookの署名シークレットを入力してください。<br>
+								<strong>【推奨】</strong> セキュリティ向上のため、Stripeダッシュボードの「Webhook」セクションで発行される<strong>署名シークレット（whsec_...）</strong>を入力してください。<br>
+								設定すると、リクエストが本当にStripeから送信されたものか検証されるようになります。<br>
 								Webhook URL: <code><?php echo esc_url(add_query_arg('photo_purchase_action', 'stripe_webhook', home_url('/'))); ?></code>
 							</p>
 						</td>

@@ -107,18 +107,18 @@ jQuery(document).ready(function ($) {
                         var itemDetails = response.data.find(d => d.id == cartItem.id && d.format == cartItem.format);
                         if (!itemDetails) return;
 
-                        var itemPrice = parseInt(itemDetails.price);
+                        var itemPrice = parseInt(itemDetails.price) || 0;
                         var extraPrice = 0;
                         var optLabels = '';
                         if (cartItem.options && cartItem.options.length > 0) {
                             cartItem.options.forEach(function(opt) {
-                                extraPrice += opt.price;
+                                extraPrice += (parseInt(opt.price) || 0);
                                 var gLabel = (opt.group && !['項目', 'オプション'].includes(opt.group)) ? opt.group + ': ' : '+ ';
                                 optLabels += '<span style="color:var(--pp-accent); font-size:0.75rem; display:block;">' + gLabel + opt.name + '</span>';
                             });
                         }
 
-                        var subtotal = (itemPrice + extraPrice) * cartItem.qty;
+                        var subtotal = (itemPrice + extraPrice) * (parseInt(cartItem.qty) || 1);
                         total += subtotal;
 
                         var formatLabel = photoPurchase.labels[cartItem.format] || cartItem.format;

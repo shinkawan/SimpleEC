@@ -60,6 +60,7 @@ function photo_purchase_save_order($order_token, &$order_data)
             $sub_req = get_post_meta($item['id'], '_photo_sub_requires_shipping', true);
             if ($sub_req === '1') {
                 $has_physical = true;
+                $item['sub_requires_shipping'] = '1';
             }
         } else {
             $price = get_post_meta($item['id'], $price_key, true);

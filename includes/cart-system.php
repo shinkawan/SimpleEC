@@ -131,6 +131,11 @@ function photo_purchase_validate_reorder()
             if ($is_sold_out || ($manage_stock && $stock_qty <= 0)) {
                 $sold_out_titles[] = get_the_title($id);
             } else {
+                // Feature: Repair missing shippability flag for old order data
+                if ($format === 'subscription') {
+                    $sub_req = get_post_meta($id, '_photo_sub_requires_shipping', true);
+                    $item['sub_requires_shipping'] = ($sub_req === '1');
+                }
                 $available_items[] = $item;
             }
         }
