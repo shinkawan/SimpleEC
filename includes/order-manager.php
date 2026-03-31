@@ -297,6 +297,18 @@ function photo_purchase_save_order($order_token, &$order_data)
         if ($order_data['method'] === 'bank_transfer' || $order_data['method'] === 'cod') {
             photo_purchase_send_buyer_notification($order_token, $order_data, $total_amount);
         }
+
+        // --- Abandoned Cart Recovery: Mark as recovered ---
+        $wpdb->update(
+            $wpdb->prefix . 'photo_abandoned_carts',
+            array(
+                'status' => 'recovered',
+                'recovered_at' => current_time('mysql')
+            ),
+            array('email' => $order_data['buyer']['email'], 'status' => 'pending', 'unsubscribed' => 0),
+            array('%s', '%s'),
+            array('%s', '%s', '%d')
+        );
     }
 
     return $result;

@@ -108,6 +108,65 @@ function photo_purchase_get_cart_details()
 }
 add_action('wp_ajax_photo_get_cart_details', 'photo_purchase_get_cart_details');
 add_action('wp_ajax_nopriv_photo_get_cart_details', 'photo_purchase_get_cart_details');
+
+/**
+ * AJAX: Sync Abandoned Cart
+ */
+function photo_purchase_sync_abandoned_cart()
+{
+    check_ajax_referer('photo_purchase_nonce', 'nonce');
+
+    $email = sanitize_email($_POST['email'] ?? '');
+    $cart_json = stripslashes($_POST['cart_json'] ?? '');
+
+    if (empty($email) || empty($cart_json) || $cart_json === '[]') {
+        wp_send_json_error('Invalid data');
+    }
+
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'photo_abandoned_carts';
+
+    // 既に注文済みの場合は何もしない（あるいはstatusチェック）
+    // pending状態のエントリを探す
+    $existing = $wpdb->get_row($wpdb->prepare(
+        "SELECT id FROM $table_name WHERE email = %s AND status = 'pending' ORDER BY id DESC LIMIT 1",
+        $email
+    ));
+
+    if ($existing) {
+        $wpdb->update(
+            $table_name,
+            array(
+                'cart_json' => $cart_json,
+                'last_active' => current_time('mysql'),
+                'user_id' => get_current_user_id()
+            ),
+            array('id' => $existing->id),
+            array('%s', '%s', '%d'),
+            array('%d')
+        );
+    } else {
+        $token = bin2hex(random_bytes(16));
+        $wpdb->insert(
+            $table_name,
+            array(
+                'email' => $email,
+                'cart_json' => $cart_json,
+                'user_id' => get_current_user_id(),
+                'last_active' => current_time('mysql'),
+                'status' => 'pending',
+                'recovery_token' => $token,
+                'reminder_sent_count' => 0
+            ),
+            array('%s', '%s', '%d', '%s', '%s', '%s', '%d')
+        );
+    }
+
+    wp_send_json_success();
+}
+add_action('wp_ajax_photo_purchase_sync_abandoned_cart', 'photo_purchase_sync_abandoned_cart');
+add_action('wp_ajax_nopriv_photo_purchase_sync_abandoned_cart', 'photo_purchase_sync_abandoned_cart');
+
 /**
  * AJAX: Validate Reorder Stock Status
  */

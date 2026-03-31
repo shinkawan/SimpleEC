@@ -45,6 +45,7 @@ jQuery(document).ready(function ($) {
     function saveCart(cart) {
         localStorage.setItem('photo_cart', JSON.stringify(cart));
         updateCartUI();
+        $(document).trigger('cart_updated');
     }
 
     function updateCartUI() {
@@ -557,6 +558,33 @@ jQuery(document).ready(function ($) {
             return false;
         }
         $('#cart_json').val(JSON.stringify(cart));
+    });
+
+    // --- かご落ち同期機能 ---
+    function syncAbandonedCart() {
+        var email = $('input[name="buyer_email"]').val();
+        var cart = getCart();
+        
+        if (!email || cart.length === 0) return;
+        if (!email.match(/.+@.+\..+/)) return;
+
+        $.ajax({
+            url: photoPurchase.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'photo_purchase_sync_abandoned_cart',
+                email: email,
+                cart_json: JSON.stringify(cart),
+                nonce: photoPurchase.nonce
+            }
+        });
+    }
+
+    $(document).on('blur', 'input[name="buyer_email"]', syncAbandonedCart);
+    $(document).on('cart_updated', function() {
+        if ($('input[name="buyer_email"]').val()) {
+            syncAbandonedCart();
+        }
     });
 
     // --- シミュレーター機能 ---

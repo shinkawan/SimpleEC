@@ -114,6 +114,26 @@ function photo_purchase_create_db_table()
 		PRIMARY KEY  (id)
 	) $charset_collate;";
 	dbDelta($sql_log);
+
+	// Abandoned Cart table support
+	$abandoned_table = $wpdb->prefix . 'photo_abandoned_carts';
+	$sql_abandoned = "CREATE TABLE $abandoned_table (
+		id bigint(20) NOT NULL AUTO_INCREMENT,
+		email varchar(255) NOT NULL,
+		cart_json longtext NOT NULL,
+		user_id bigint(20) DEFAULT 0 NOT NULL,
+		last_active datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
+		status varchar(20) DEFAULT 'pending' NOT NULL,
+		reminder_sent_count int(11) DEFAULT 0 NOT NULL,
+		recovery_token varchar(100) NOT NULL,
+		clicked_at datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
+		recovered_at datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
+		unsubscribed tinyint(1) DEFAULT 0 NOT NULL,
+		PRIMARY KEY  (id),
+		KEY email (email),
+		KEY recovery_token (recovery_token)
+	) $charset_collate;";
+	dbDelta($sql_abandoned);
 }
 
 /**
@@ -414,6 +434,7 @@ function photo_purchase_dashboard_widget_content() {
     global $wpdb;
     $orders_table = $wpdb->prefix . 'photo_orders';
     $logs_table = $wpdb->prefix . 'photo_system_logs';
+    $abandoned_table = $wpdb->prefix . 'photo_abandoned_carts';
 
     // Get order counts
     $pending = $wpdb->get_var("SELECT COUNT(*) FROM $orders_table WHERE status = 'pending_payment'");
@@ -422,22 +443,39 @@ function photo_purchase_dashboard_widget_content() {
     // Get recent error count (last 24h)
     $error_count = $wpdb->get_var("SELECT COUNT(*) FROM $logs_table WHERE level = 'error' AND log_date > DATE_SUB(NOW(), INTERVAL 1 DAY)");
 
+    // Get Abandoned Cart Stats
+    $abandoned_stats = $wpdb->get_row("
+        SELECT 
+            SUM(CASE WHEN reminder_sent_count > 0 THEN 1 ELSE 0 END) as sent,
+            SUM(CASE WHEN status = 'recovered' THEN 1 ELSE 0 END) as recovered
+        FROM $abandoned_table
+    ");
+    $sent_count = intval($abandoned_stats->sent ?? 0);
+    $recovered_count = intval($abandoned_stats->recovered ?? 0);
+    $recovery_rate = ($sent_count > 0) ? round(($recovered_count / $sent_count) * 100, 1) : 0;
+
     echo '<div class="photo-dashboard-stats">';
-    echo '<p><span class="dashicons dashicons-cart"></span> <strong>受信した注文:</strong></p>';
-    echo '<ul>';
-    echo '<li>入金待ち: <a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-orders') . '">' . intval($pending) . ' 件</a></li>';
-    echo '<li>準備中（決済済）: <a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-orders') . '">' . intval($processing) . ' 件</a></li>';
+    echo '<p><span class="dashicons dashicons-cart"></span> <strong>' . __('受信した注文:', 'photo-purchase') . '</strong></p>';
+    echo '<ul style="margin-bottom:15px;">';
+    echo '<li>' . __('入金待ち:', 'photo-purchase') . ' <a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-orders') . '">' . intval($pending) . ' ' . __('件', 'photo-purchase') . '</a></li>';
+    echo '<li>' . __('準備中（決済済）:', 'photo-purchase') . ' <a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-orders') . '">' . intval($processing) . ' ' . __('件', 'photo-purchase') . '</a></li>';
+    echo '</ul>';
+
+    echo '<p><span class="dashicons dashicons-email-alt"></span> <strong>' . __('かご落ちリカバリー:', 'photo-purchase') . '</strong></p>';
+    echo '<ul style="margin-bottom:15px;">';
+    echo '<li>' . __('リマインド送信数:', 'photo-purchase') . ' <strong>' . number_format($sent_count) . '</strong></li>';
+    echo '<li>' . __('リカバリー成功:', 'photo-purchase') . ' <strong style="color:#28a745;">' . number_format($recovered_count) . ' (' . $recovery_rate . '%)</strong></li>';
     echo '</ul>';
     
     if ($error_count > 0) {
-        echo '<p style="color:#d63638;"><span class="dashicons dashicons-warning"></span> <strong>直近24時間のシステムエラー:</strong> <a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-logs') . '" style="color:#d63638;">' . intval($error_count) . ' 件</a></p>';
+        echo '<p style="color:#d63638;"><span class="dashicons dashicons-warning"></span> <strong>' . __('直近24時間のシステムエラー:', 'photo-purchase') . '</strong> <a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-logs') . '" style="color:#d63638;">' . intval($error_count) . ' ' . __('件', 'photo-purchase') . '</a></p>';
     } else {
-        echo '<p style="color:#22c55e;"><span class="dashicons dashicons-yes-alt"></span> システムは正常に稼働しています。</p>';
+        echo '<p style="color:#22c55e;"><span class="dashicons dashicons-yes-alt"></span> ' . __('システムは正常に稼働しています。', 'photo-purchase') . '</p>';
     }
     
     echo '<hr style="margin:15px 0 10px;">';
-    echo '<p><a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-settings') . '" class="button">各種設定</a> ';
-    echo '<a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-orders') . '" class="button button-primary">注文管理</a></p>';
+    echo '<p><a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-settings') . '" class="button">' . __('各種設定', 'photo-purchase') . '</a> ';
+    echo '<a href="' . admin_url('edit.php?post_type=photo_product&page=photo-purchase-orders') . '" class="button button-primary">' . __('注文管理', 'photo-purchase') . '</a></p>';
     echo '</div>';
 }
 
@@ -537,6 +575,9 @@ function photo_purchase_settings_page()
 			update_option('photo_pp_google_client_secret', sanitize_text_field($_POST['google_client_secret']));
 			update_option('photo_pp_line_client_id', sanitize_text_field($_POST['line_client_id']));
 			update_option('photo_pp_line_client_secret', sanitize_text_field($_POST['line_client_secret']));
+		} elseif ($active_tab == 'abandoned_cart') {
+			update_option('photo_pp_enable_abandoned_cart', isset($_POST['enable_abandoned_cart']) ? '1' : '0');
+			update_option('photo_pp_abandoned_cart_delay', intval($_POST['abandoned_cart_delay']));
 		} elseif ($active_tab == 'membership_terms') {
 			update_option('photo_pp_membership_terms', wp_kses_post($_POST['membership_terms']));
 		}
@@ -564,6 +605,8 @@ function photo_purchase_settings_page()
 				class="nav-tab <?php echo $active_tab == 'tokushoho' ? 'nav-tab-active' : ''; ?>"><?php _e('特定商取引法', 'photo-purchase'); ?></a>
 			<a href="?post_type=photo_product&page=photo-purchase-settings&tab=sns"
 				class="nav-tab <?php echo $active_tab == 'sns' ? 'nav-tab-active' : ''; ?>"><?php _e('SNS連携', 'photo-purchase'); ?></a>
+			<a href="?post_type=photo_product&page=photo-purchase-settings&tab=abandoned_cart"
+				class="nav-tab <?php echo $active_tab == 'abandoned_cart' ? 'nav-tab-active' : ''; ?>"><?php _e('かご落ち対策', 'photo-purchase'); ?></a>
 			<a href="?post_type=photo_product&page=photo-purchase-settings&tab=membership_terms"
 				class="nav-tab <?php echo $active_tab == 'membership_terms' ? 'nav-tab-active' : ''; ?>"><?php _e('会員規約', 'photo-purchase'); ?></a>
 		</h2>
@@ -1082,6 +1125,74 @@ function photo_purchase_settings_page()
 						<td><code><?php echo esc_url(home_url('/?pp_sns_callback=line')); ?></code></td>
 					</tr>
 				</table>
+				</table>
+			<?php elseif ($active_tab == 'abandoned_cart'): ?>
+				<h3 class="title"><?php _e('かご落ちリカバリーの設定', 'photo-purchase'); ?></h3>
+				<p class="description">
+					カートに商品を入れたまま離脱したユーザーに対して、自動的にリマインドメールを送信します。
+				</p>
+				<table class="form-table">
+					<tr>
+						<th><?php _e('機能の有効化', 'photo-purchase'); ?></th>
+						<td>
+							<label>
+								<input type="checkbox" name="enable_abandoned_cart" value="1" <?php checked(get_option('photo_pp_enable_abandoned_cart', '0'), '1'); ?>>
+								<?php _e('かご落ちリカバリーメールを自動送信する', 'photo-purchase'); ?>
+							</label>
+						</td>
+					</tr>
+					<tr>
+						<th><label for="abandoned_cart_delay"><?php _e('送信タイミング', 'photo-purchase'); ?></label></th>
+						<td>
+							<?php $delay = get_option('photo_pp_abandoned_cart_delay', '24'); ?>
+							<select name="abandoned_cart_delay" id="abandoned_cart_delay">
+								<option value="3" <?php selected($delay, '3'); ?>><?php _e('3時間後', 'photo-purchase'); ?></option>
+								<option value="24" <?php selected($delay, '24'); ?>><?php _e('24時間後 (推奨)', 'photo-purchase'); ?></option>
+								<option value="48" <?php selected($delay, '48'); ?>><?php _e('48時間後', 'photo-purchase'); ?></option>
+							</select>
+							<p class="description"><?php _e('カートが最後に更新されてから、指定した時間が経過した後にメールを送信します。', 'photo-purchase'); ?></p>
+						</td>
+					</tr>
+				</table>
+
+				<h3 class="title"><?php _e('リカバリー状況 (統計)', 'photo-purchase'); ?></h3>
+				<?php
+				global $wpdb;
+				$table_name = $wpdb->prefix . 'photo_abandoned_carts';
+				$stats = $wpdb->get_row("
+					SELECT 
+						COUNT(*) as total,
+						SUM(CASE WHEN reminder_sent_count > 0 THEN 1 ELSE 0 END) as sent,
+						SUM(CASE WHEN clicked_at IS NOT NULL THEN 1 ELSE 0 END) as clicked,
+						SUM(CASE WHEN status = 'recovered' THEN 1 ELSE 0 END) as recovered,
+						SUM(CASE WHEN unsubscribed = 1 THEN 1 ELSE 0 END) as unsubscribed
+					FROM $table_name
+				");
+				$recovery_rate = ($stats->sent > 0) ? round(($stats->recovered / $stats->sent) * 100, 1) : 0;
+				$click_rate = ($stats->sent > 0) ? round(($stats->clicked / $stats->sent) * 100, 1) : 0;
+				?>
+				<div class="photo-stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 20px; margin-top: 20px;">
+					<div style="background:#fff; padding:20px; border-radius:8px; border:1px solid #ddd; text-align:center;">
+						<div style="font-size:12px; color:#666;"><?php _e('捕捉済みカート', 'photo-purchase'); ?></div>
+						<div style="font-size:24px; font-weight:bold; color:#333;"><?php echo number_format($stats->total); ?></div>
+					</div>
+					<div style="background:#fff; padding:20px; border-radius:8px; border:1px solid #ddd; text-align:center;">
+						<div style="font-size:12px; color:#666;"><?php _e('メール送信数', 'photo-purchase'); ?></div>
+						<div style="font-size:24px; font-weight:bold; color:#0073aa;"><?php echo number_format($stats->sent); ?></div>
+					</div>
+					<div style="background:#fff; padding:20px; border-radius:8px; border:1px solid #ddd; text-align:center;">
+						<div style="font-size:12px; color:#666;"><?php _e('クリック数 (率)', 'photo-purchase'); ?></div>
+						<div style="font-size:24px; font-weight:bold; color:#dfb613;"><?php echo number_format($stats->clicked); ?> <span style="font-size:14px; font-weight:normal;">(<?php echo $click_rate; ?>%)</span></div>
+					</div>
+					<div style="background:#fff; padding:20px; border-radius:8px; border:1px solid #ddd; text-align:center;">
+						<div style="font-size:12px; color:#666;"><?php _e('リカバリー成功 (率)', 'photo-purchase'); ?></div>
+						<div style="font-size:24px; font-weight:bold; color:#28a745;"><?php echo number_format($stats->recovered); ?> <span style="font-size:14px; font-weight:normal;">(<?php echo $recovery_rate; ?>%)</span></div>
+					</div>
+					<div style="background:#fff; padding:20px; border-radius:8px; border:1px solid #ddd; text-align:center;">
+						<div style="font-size:12px; color:#666;"><?php _e('配信停止数', 'photo-purchase'); ?></div>
+						<div style="font-size:24px; font-weight:bold; color:#dc3545;"><?php echo number_format($stats->unsubscribed); ?></div>
+					</div>
+				</div>
 			<?php elseif ($active_tab == 'membership_terms'): ?>
 				<h3 class="title"><?php _e('会員規約の設定', 'photo-purchase'); ?></h3>
 				<p class="description">
@@ -1532,6 +1643,7 @@ require_once PHOTO_PURCHASE_PATH . 'includes/admin-log.php';
 require_once PHOTO_PURCHASE_PATH . 'includes/stripe-webhooks.php';
 require_once PHOTO_PURCHASE_PATH . 'includes/sns-handler.php';
 require_once PHOTO_PURCHASE_PATH . 'includes/auth-system.php';
+require_once PHOTO_PURCHASE_PATH . 'includes/abandoned-cart.php';
 
 /**
  * Enqueue Frontend Assets
