@@ -108,6 +108,41 @@ function photo_purchase_get_cart_details()
 }
 add_action('wp_ajax_photo_get_cart_details', 'photo_purchase_get_cart_details');
 add_action('wp_ajax_nopriv_photo_get_cart_details', 'photo_purchase_get_cart_details');
+/**
+ * AJAX: Validate Reorder Stock Status
+ */
+function photo_purchase_validate_reorder()
+{
+    check_ajax_referer('photo_purchase_nonce', 'nonce');
+
+    $items = isset($_POST['items']) ? $_POST['items'] : array();
+    $available_items = array();
+    $sold_out_titles = array();
+
+    if (!empty($items)) {
+        foreach ($items as $item) {
+            $id = intval($item['id']);
+            $format = sanitize_text_field($item['format'] ?? 'digital');
+
+            $is_sold_out = get_post_meta($id, '_photo_is_sold_out', true) === '1';
+            $manage_stock = get_post_meta($id, '_photo_manage_stock', true) === '1';
+            $stock_qty = intval(get_post_meta($id, '_photo_stock_qty', true));
+
+            if ($is_sold_out || ($manage_stock && $stock_qty <= 0)) {
+                $sold_out_titles[] = get_the_title($id);
+            } else {
+                $available_items[] = $item;
+            }
+        }
+    }
+
+    wp_send_json_success(array(
+        'available_items' => $available_items,
+        'sold_out_titles' => $sold_out_titles
+    ));
+}
+add_action('wp_ajax_photo_purchase_validate_reorder', 'photo_purchase_validate_reorder');
+add_action('wp_ajax_nopriv_photo_purchase_validate_reorder', 'photo_purchase_validate_reorder');
 
 /**
  * AJAX: Register Restock Notification

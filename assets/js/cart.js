@@ -1226,7 +1226,7 @@ jQuery(document).ready(function ($) {
         }, 500);
     }
 
-    // --- Buy Again (Reorder) Handler [v3.12.3] ---
+    // --- Buy Again (Reorder) Handler [v3.13.0] ---
     $(document).on('click', '.buy-again-btn', function(e) {
         e.preventDefault();
         var $btn = $(this);
@@ -1237,52 +1237,82 @@ jQuery(document).ready(function ($) {
             return;
         }
 
-        var cart = getCart();
-        var addedCount = 0;
+        var oldHtml = $btn.html();
+        $btn.html('<span class="dashicons dashicons-update spin"></span> 確認中...').prop('disabled', true);
 
-        // Mixed Cart Protection
-        var hasSubInCart = cart.some(function(i) { return i.format === 'subscription'; });
-        var hasNormalInCart = cart.some(function(i) { return i.format !== 'subscription'; });
+        $.ajax({
+            url: photoPurchase.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'photo_purchase_validate_reorder',
+                items: items,
+                nonce: photoPurchase.nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    var available = response.data.available_items;
+                    var soldOut = response.data.sold_out_titles;
+                    var cart = getCart();
+                    var addedCount = 0;
 
-        items.forEach(function(item) {
-            var isSub = (item.format === 'subscription');
-            if (isSub && hasNormalInCart) return;
-            if (!isSub && hasSubInCart) return;
+                    // Mixed Cart Protection
+                    var hasSubInCart = cart.some(function(i) { return i.format === 'subscription'; });
+                    var hasNormalInCart = cart.some(function(i) { return i.format !== 'subscription'; });
 
-            var existingIdx = cart.findIndex(function(c) {
-                return c.id == item.id && 
-                       c.format == item.format && 
-                       JSON.stringify(c.options || []) === JSON.stringify(item.options || []);
-            });
+                    available.forEach(function(item) {
+                        var isSub = (item.format === 'subscription');
+                        if (isSub && hasNormalInCart) return;
+                        if (!isSub && hasSubInCart) return;
 
-            if (existingIdx > -1) {
-                cart[existingIdx].qty = (parseInt(cart[existingIdx].qty) || 0) + (parseInt(item.qty) || 1);
-            } else {
-                cart.push({
-                    id: item.id,
-                    format: item.format,
-                    qty: item.qty || 1,
-                    options: item.options || [],
-                    sub_requires_shipping: item.sub_requires_shipping === true || item.sub_requires_shipping === '1'
-                });
+                        var existingIdx = cart.findIndex(function(c) {
+                            return c.id == item.id && 
+                                   c.format == item.format && 
+                                   JSON.stringify(c.options || []) === JSON.stringify(item.options || []);
+                        });
+
+                        if (existingIdx > -1) {
+                            cart[existingIdx].qty = (parseInt(cart[existingIdx].qty) || 0) + (parseInt(item.qty) || 1);
+                        } else {
+                            cart.push({
+                                id: item.id,
+                                format: item.format,
+                                qty: item.qty || 1,
+                                options: item.options || [],
+                                sub_requires_shipping: item.sub_requires_shipping === true || item.sub_requires_shipping === '1'
+                            });
+                        }
+                        addedCount++;
+                    });
+
+                    if (addedCount > 0) {
+                        saveCart(cart);
+                        $btn.html('✅ ' + addedCount + ' 個の商品を追加しました').css('background', '#dcfce7').css('color', '#166534');
+                        renderDrawer();
+                        openDrawer();
+                    } else {
+                        $btn.html(oldHtml).css('background', '').css('color', '').prop('disabled', false);
+                    }
+
+                    // Notification for sold out items
+                    if (soldOut.length > 0) {
+                        var msg = '以下の商品は現在売り切れのため、カートに追加できませんでした：\n\n・' + soldOut.join('\n・');
+                        alert(msg);
+                    }
+
+                    if (addedCount > 0) {
+                        setTimeout(function() {
+                            $btn.html(oldHtml).css('background', '').css('color', '').prop('disabled', false);
+                        }, 3000);
+                    }
+                } else {
+                    alert('注文データの検証に失敗しました。');
+                    $btn.html(oldHtml).prop('disabled', false);
+                }
+            },
+            error: function() {
+                alert('通信エラーが発生しました。');
+                $btn.html(oldHtml).prop('disabled', false);
             }
-            addedCount++;
         });
-
-        if (addedCount > 0) {
-            saveCart(cart);
-            var oldHtml = $btn.html();
-            $btn.html('✅ ' + addedCount + ' 個の商品を追加しました').css('background', '#dcfce7').css('color', '#166534').prop('disabled', true);
-            
-            // Immediately open drawer
-            renderDrawer();
-            openDrawer();
-
-            setTimeout(function() {
-                $btn.html(oldHtml).css('background', '').css('color', '').prop('disabled', false);
-            }, 2000);
-        } else {
-            alert('商品をカートに追加できませんでした。');
-        }
     });
 });
