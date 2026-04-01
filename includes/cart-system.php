@@ -221,9 +221,20 @@ function photo_purchase_validate_reorder()
             // Variation Stock Check
             if ($variation_id) {
                 $variations = get_post_meta($id, '_photo_variation_skus', true);
-                if (is_array($variations) && isset($variations[$variation_id])) {
-                    $v = $variations[$variation_id];
-                    if (isset($v['stock']) && intval($v['stock']) <= 0) {
+                if (is_array($variations)) {
+                    $v = null;
+                    if (isset($variations[$variation_id])) {
+                        $v = $variations[$variation_id];
+                    } else {
+                        foreach ($variations as $tmp_v) {
+                            if (($tmp_v['variation_id'] ?? '') === $variation_id) {
+                                $v = $tmp_v;
+                                break;
+                            }
+                        }
+                    }
+
+                    if ($v && isset($v['stock']) && intval($v['stock']) <= 0) {
                         $is_sold_out = true; 
                     }
                 }

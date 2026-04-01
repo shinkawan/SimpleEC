@@ -306,21 +306,23 @@ function photo_purchase_save_order($order_token, &$order_data)
                 // SKU-level stock decrement
                 $variations = get_post_meta($product_id, '_photo_variation_skus', true);
                 if (is_array($variations)) {
-                    $updated = false;
-                    foreach ($variations as &$var) {
-                        if ($var['variation_id'] === $variation_id) {
-                            $current_v_stock = intval($var['stock'] ?? 0);
-                            // Atomic-like check: Skip if already sold out (race condition)
-                            if ($current_v_stock < $qty) {
-                                // Log or handle if necessary, but here we just take what we can
-                                $qty_to_deduct = $current_v_stock;
-                            } else {
-                                $qty_to_deduct = $qty;
+                    $target_var = null;
+                    if (isset($variations[$variation_id])) {
+                        $target_var = &$variations[$variation_id];
+                    } else {
+                        foreach ($variations as &$v) {
+                            if (($v['variation_id'] ?? '') === $variation_id) {
+                                $target_var = &$v;
+                                break;
                             }
-                            $var['stock'] = max(0, $current_v_stock - $qty_to_deduct);
-                            $updated = true;
-                            break;
                         }
+                    }
+
+                    if ($target_var) {
+                        $current_v_stock = intval($target_var['stock'] ?? 0);
+                        $qty_to_deduct = min($qty, $current_v_stock);
+                        $target_var['stock'] = max(0, $current_v_stock - $qty_to_deduct);
+                        $updated = true;
                     }
                     if ($updated) {
                         update_post_meta($product_id, '_photo_variation_skus', $variations);
@@ -3814,12 +3816,21 @@ function photo_purchase_update_stock_for_order($order_id, $is_increment = true) 
                     if ($use_variations && $v_id) {
                         $variations = get_post_meta($product_id, '_photo_variation_skus', true);
                         if (is_array($variations)) {
-                            foreach ($variations as &$var) {
-                                if (($var['variation_id'] ?? '') === $v_id) {
-                                    $current_v_stock = intval($var['stock'] ?? 0);
-                                    $var['stock'] = $is_increment ? ($current_v_stock + $qty) : max(0, $current_v_stock - $qty);
-                                    break;
+                            $target_var = null;
+                            if (isset($variations[$v_id])) {
+                                $target_var = &$variations[$v_id];
+                            } else {
+                                foreach ($variations as &$v) {
+                                    if (($v['variation_id'] ?? '') === $v_id) {
+                                        $target_var = &$v;
+                                        break;
+                                    }
                                 }
+                            }
+
+                            if ($target_var) {
+                                $current_v_stock = intval($target_var['stock'] ?? 0);
+                                $target_var['stock'] = $is_increment ? ($current_v_stock + $qty) : max(0, $current_v_stock - $qty);
                             }
                             update_post_meta($product_id, '_photo_variation_skus', $variations);
                         }
@@ -3863,12 +3874,14 @@ function photo_purchase_update_stock_for_order($order_id, $is_increment = true) 
  * Check if stock alert notification should be sent
  */
 function photo_purchase_check_stock_alert($product_id) {
-    if (get_post_meta($product_id, '_photo_manage_stock', true) !== '1') {
+    $manage_stock = get_post_meta($product_id, '_photo_manage_stock', true) === '1';
+    $use_variations = get_post_meta($product_id, '_photo_use_variations', true) === '1';
+
+    if (!$manage_stock && !$use_variations) {
         return;
     }
 
     $threshold = intval(get_option('photo_pp_stock_threshold', '5'));
-    $use_variations = get_post_meta($product_id, '_photo_use_variations', true) === '1';
     $low_stock_items = array();
     $alert_sent_vars = get_post_meta($product_id, '_photo_stock_vars_alert_sent', true) ?: array();
     $needs_email = false;
@@ -3877,23 +3890,24 @@ function photo_purchase_check_stock_alert($product_id) {
     if ($use_variations) {
         $variations = get_post_meta($product_id, '_photo_variation_skus', true);
         if (is_array($variations)) {
-            foreach ($variations as $v_id => $v) {
+            foreach ($variations as $key => $v) {
+                $actual_v_id = $v['variation_id'] ?? $key;
                 $stock = intval($v['stock'] ?? 0);
                 if ($stock <= $threshold) {
                     $low_stock_items[] = array(
-                        'name' => $v['name'] ?? $v_id,
+                        'name' => $v['name'] ?? $actual_v_id,
                         'stock' => $stock
                     );
-                    // Check if we already sent alert for this variation
-                    if (empty($alert_sent_vars[$v_id])) {
+                    // Check if we already sent alert for this specific variation
+                    if (empty($alert_sent_vars[$actual_v_id])) {
                         $needs_email = true;
-                        $alert_sent_vars[$v_id] = true;
+                        $alert_sent_vars[$actual_v_id] = true;
                         $has_updated_sent_meta = true;
                     }
                 } else {
                     // Reset alert flag if stock is replenished
-                    if (!empty($alert_sent_vars[$v_id])) {
-                        unset($alert_sent_vars[$v_id]);
+                    if (!empty($alert_sent_vars[$actual_v_id])) {
+                        unset($alert_sent_vars[$actual_v_id]);
                         $has_updated_sent_meta = true;
                     }
                 }

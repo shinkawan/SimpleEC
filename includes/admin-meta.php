@@ -170,7 +170,10 @@ function photo_purchase_meta_box_callback($post)
 		</div>
 	</div>
 
-	<strong>2. バリエーション一覧</strong>
+	<div style="display:flex; justify-content:space-between; align-items:center;">
+		<strong>2. バリエーション一覧</strong>
+		<label style="font-size:12px; cursor:pointer;"><input type="checkbox" id="ec_variation_check_all"> 全て選択</label>
+	</div>
 	<div id="ec_variation_list" style="margin-top:10px; display:grid; gap:10px;">
 		<?php
 		foreach ($variations as $v_id => $v) {
@@ -184,7 +187,16 @@ function photo_purchase_meta_box_callback($post)
 	<script>
 	jQuery(document).ready(function($) {
 		$("#ec_generate_variations").click(function() {
-			if (!confirm("現在のバリエーションリストがリセットされます。よろしいですか？")) return;
+			var is_append = false;
+			var existing_count = $(".variation-row").length;
+			
+			if (existing_count > 0) {
+				if (confirm("既存のリストを残したまま新しい組み合わせを追加しますか？\n(「キャンセル」で既存をリセットして生成します)")) {
+					is_append = true;
+				} else {
+					if (!confirm("既存のリストが完全にリセットされます。よろしいですか？")) return;
+				}
+			}
 			
 			var attributes = [];
 			$(".attr-row").each(function() {
@@ -216,14 +228,31 @@ function photo_purchase_meta_box_callback($post)
 
 			var combinations = cartesian(attributes);
 			var $list = $("#ec_variation_list");
-			$list.empty();
+			
+			if (!is_append) {
+				$list.empty();
+			}
 
+			// Get current existing attrs to skip duplicates
+			var current_attrs = [];
+			$(".variation-row").each(function() {
+				try {
+					var raw = $(this).find("input[name='v_attrs[]']").val();
+					current_attrs.push(JSON.stringify(JSON.parse(raw)));
+				} catch (e) {}
+			});
+
+			var added_count = 0;
 			combinations.forEach(function(combo, idx) {
+				var combo_json = JSON.stringify(combo);
+				if (current_attrs.indexOf(combo_json) !== -1) return; // Skip duplicate
+
 				var v_id = "v_" + Date.now() + "_" + idx;
 				var name = combo.map(c => c.value).join(" / ");
-				var attr_str = JSON.stringify(combo).replace(/'/g, "&#39;");
+				var attr_str = combo_json.replace(/'/g, "&#39;");
 				
-				var row = `<div class="variation-row" style="display:grid; grid-template-columns: 2fr 1fr 1fr 40px; gap:10px; align-items:center; background:#fff; padding:10px; border:1px solid #ddd; border-radius:4px;">
+				var row = `<div class="variation-row" style="display:grid; grid-template-columns: 30px 2fr 1fr 1fr 40px; gap:10px; align-items:center; background:#fff; padding:10px; border:1px solid #ddd; border-radius:4px;">
+					<div><input type="checkbox" class="variation-select-checkbox"></div>
 					<div>
                         <strong>${name}</strong>
                         <input type="hidden" name="v_name[]" value="${name}">
@@ -236,7 +265,17 @@ function photo_purchase_meta_box_callback($post)
 					<button type="button" class="remove-variation button" style="color:red; border:none; background:none; font-size:18px; cursor:pointer;">&times;</button>
 				</div>`;
 				$list.append(row);
+				added_count++;
 			});
+
+			if (is_append && added_count === 0) {
+				alert("新しい組み合わせは見つかりませんでした。すべて追加済みです。");
+			}
+		});
+
+		// Checkbox handle all selection
+		$("#ec_variation_check_all").on("change", function() {
+			$(".variation-select-checkbox").prop("checked", $(this).prop("checked"));
 		});
 
 		$(document).on("click", ".remove-variation", function() {
@@ -247,8 +286,15 @@ function photo_purchase_meta_box_callback($post)
 
 		$("#apply_bulk_price").on("click", function() {
 			const price = $("#bulk_v_price").val();
-			if(confirm("すべてのバリエーションの価格を " + price + " 円に設定しますか？")) {
-				$("input[name='v_price[]']").val(price);
+			var $checked = $(".variation-select-checkbox:checked");
+			
+			if ($checked.length === 0) {
+				alert("対象となるバリエーションにチェックを入れてください。");
+				return;
+			}
+			
+			if(confirm($checked.length + " 件の選択したバリエーションに価格 " + price + " 円を適用しますか？")) {
+				$checked.closest(".variation-row").find("input[name='v_price[]']").val(price);
 			}
 		});
 
@@ -256,10 +302,18 @@ function photo_purchase_meta_box_callback($post)
 			const prefix = $("#bulk_v_sku_prefix").val();
 			if(!prefix) return alert("プレフィックスを入力してください");
 			
-			$(".variation-row").each(function(index) {
-				const $input = $(this).find("input[name='v_sku[]']");
-				$input.val(prefix + (index + 1).toString().padStart(3, '0'));
-			});
+			var $checked = $(".variation-select-checkbox:checked");
+			if ($checked.length === 0) {
+				alert("対象となるバリエーションにチェックを入れてください。");
+				return;
+			}
+			
+			if(confirm($checked.length + " 件の選択したバリエーションにSKUを一括付与しますか？")) {
+				$checked.each(function(index) {
+					const $input = $(this).closest(".variation-row").find("input[name='v_sku[]']");
+					$input.val(prefix + (index + 1).toString().padStart(3, '0'));
+				});
+			}
 		});
 	});
 	</script>
@@ -644,6 +698,7 @@ function photo_purchase_save_meta($post_id)
 			$attrs = json_decode(stripslashes($_POST['v_attrs'][$i]), true);
 
 			$variations[$v_id] = array(
+				'variation_id' => $v_id,
 				'name' => $name,
 				'stock' => $stock,
 				'price' => $price,
@@ -890,7 +945,8 @@ function photo_purchase_render_variation_row($v_id, $v) {
 	$sku = esc_attr($v['sku'] ?? '');
 	$attrs_json = esc_attr(json_encode($v['attrs'] ?? []));
 
-	$html = '<div class="variation-row" style="display:grid; grid-template-columns: 2fr 1fr 1fr 40px; gap:10px; align-items:center; background:#fff; padding:10px; border:1px solid #ddd; border-radius:4px;">';
+	$html = '<div class="variation-row" style="display:grid; grid-template-columns: 30px 2fr 1fr 1fr 40px; gap:10px; align-items:center; background:#fff; padding:10px; border:1px solid #ddd; border-radius:4px;">';
+	$html .= '<div><input type="checkbox" class="variation-select-checkbox"></div>';
 	$html .= '<div>';
 	$html .= '<strong>' . $name . '</strong>';
 	$html .= '<input type="hidden" name="v_name[]" value="' . $name . '">';
