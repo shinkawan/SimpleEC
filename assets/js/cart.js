@@ -103,7 +103,7 @@ jQuery(document).ready(function ($) {
                     var total = 0;
 
                     cart.forEach(function(cartItem, index) {
-                        var itemDetails = response.data.find(d => d.id == cartItem.id && d.format == cartItem.format && d.variation_id == cartItem.variation_id);
+                        var itemDetails = response.data.find(d => d.id == cartItem.id && d.format == cartItem.format && (d.variation_id || '') == (cartItem.variation_id || ''));
                         if (!itemDetails) return;
 
                         var itemPrice = parseInt(itemDetails.price, 10) || 0;
@@ -425,7 +425,7 @@ jQuery(document).ready(function ($) {
 
                     var itemsTotal = 0;
                     cart.forEach(function (cartItem, index) {
-                        var itemDetails = response.data.find(d => d.id == cartItem.id && d.format == cartItem.format && d.variation_id == cartItem.variation_id);
+                        var itemDetails = response.data.find(d => d.id == cartItem.id && d.format == cartItem.format && (d.variation_id || '') == (cartItem.variation_id || ''));
                         if (!itemDetails) return;
 
                         var itemPrice = parseInt(itemDetails.price, 10) || 0;

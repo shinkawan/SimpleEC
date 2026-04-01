@@ -220,8 +220,8 @@ function photo_purchase_validate_reorder()
 
             // Variation Stock Check
             if ($variation_id) {
-                $variations = json_decode(get_post_meta($id, '_photo_variations', true), true);
-                if ($variations && isset($variations[$variation_id])) {
+                $variations = get_post_meta($id, '_photo_variation_skus', true);
+                if (is_array($variations) && isset($variations[$variation_id])) {
                     $v = $variations[$variation_id];
                     if (isset($v['stock']) && intval($v['stock']) <= 0) {
                         $is_sold_out = true; 
@@ -232,6 +232,10 @@ function photo_purchase_validate_reorder()
             if ($is_sold_out || ($manage_stock && $stock_qty <= 0)) {
                 $sold_out_titles[] = get_the_title($id);
             } else {
+                // Ensure variation fields exist to prevent JS errors
+                $item['variation_id'] = $variation_id;
+                $item['variation_name'] = $item['variation_name'] ?? '';
+
                 // Feature: Repair missing shippability flag for old order data
                 if ($format === 'subscription') {
                     $sub_req = get_post_meta($id, '_photo_sub_requires_shipping', true);
