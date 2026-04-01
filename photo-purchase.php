@@ -505,6 +505,7 @@ function photo_purchase_settings_page()
 			update_option('photo_pp_gallery_columns', $_POST['gallery_columns'] !== '' ? intval($_POST['gallery_columns']) : 4);
 			update_option('photo_pp_member_discount_rate', isset($_POST['member_discount_rate']) ? intval($_POST['member_discount_rate']) : 0);
 			update_option('photo_my_page_id', isset($_POST['my_page_id']) ? intval($_POST['my_page_id']) : 0);
+			update_option('photo_pp_stock_threshold', isset($_POST['stock_threshold']) ? intval($_POST['stock_threshold']) : 5);
 		} elseif ($active_tab == 'payment') {
 			update_option('photo_pp_stripe_publishable_key', sanitize_text_field($_POST['stripe_pk']));
 			update_option('photo_pp_stripe_secret_key', sanitize_text_field($_POST['stripe_sk']));
@@ -516,7 +517,6 @@ function photo_purchase_settings_page()
 			update_option('photo_pp_enable_digital_sales', isset($_POST['enable_digital_sales']) ? '1' : '0');
 			update_option('photo_pp_download_expiry', intval($_POST['download_expiry']));
 			update_option('photo_pp_download_limit', intval($_POST['download_limit']));
-			update_option('photo_pp_stock_threshold', intval($_POST['stock_threshold']));
 			update_option('photo_pp_cod_tier1_limit', intval($_POST['cod_tier1_limit']));
 			update_option('photo_pp_cod_tier1_fee', intval($_POST['cod_tier1_fee']));
 			update_option('photo_pp_cod_tier2_limit', intval($_POST['cod_tier2_limit']));

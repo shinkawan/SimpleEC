@@ -91,18 +91,24 @@ function photo_purchase_get_cart_details()
 			if ($variation_id) {
 				$variations = get_post_meta($id, '_photo_variation_skus', true);
 				if (is_array($variations)) {
-					foreach ($variations as $var) {
-						if ($var['variation_id'] === $variation_id) {
-							// For variations, we add the SKU-specific price to the base price
-							// OR replace it? Logic usually is "Price" field in variation is the surcharge or the total.
-							// In our admin-meta.php, it's treated as a replacement for the specific format price if we want, 
-							// but usually it's "Variation Price". Let's treat it as REPLACE for simplicity in this plugin's model.
-							if (!empty($var['price'])) {
-								$price = $var['price'];
+					$var = null;
+					if (isset($variations[$variation_id])) {
+						$var = $variations[$variation_id];
+					} else {
+						// Fallback: Loop search in case of legacy format
+						foreach ($variations as $v) {
+							if (isset($v['variation_id']) && $v['variation_id'] === $variation_id) {
+								$var = $v;
+								break;
 							}
-							$variation_name = $var['name'];
-							break;
 						}
+					}
+
+					if ($var) {
+						if (isset($var['price']) && $var['price'] !== '') {
+							$price = $var['price'];
+						}
+						$variation_name = $var['name'] ?? '';
 					}
 				}
 			}

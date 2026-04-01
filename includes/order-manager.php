@@ -71,14 +71,24 @@ function photo_purchase_save_order($order_token, &$order_data)
         if (!empty($item['variation_id'])) {
             $variations = get_post_meta($item['id'], '_photo_variation_skus', true);
             if (is_array($variations)) {
-                foreach ($variations as $var) {
-                    if ($var['variation_id'] === $item['variation_id']) {
-                        if (!empty($var['price'])) {
-                            $price = $var['price'];
+                $var = null;
+                if (isset($variations[$item['variation_id']])) {
+                    $var = $variations[$item['variation_id']];
+                } else {
+                    // Fallback for legacy format
+                    foreach ($variations as $v) {
+                        if (isset($v['variation_id']) && $v['variation_id'] === $item['variation_id']) {
+                            $var = $v;
+                            break;
                         }
-                        $item['variation_name'] = $var['name']; // Ensure name is in item array
-                        break;
                     }
+                }
+                
+                if ($var) {
+                    if (isset($var['price']) && $var['price'] !== '') {
+                        $price = $var['price'];
+                    }
+                    $item['variation_name'] = $var['name'] ?? ''; // Ensure name is in item array
                 }
             }
         }
@@ -1101,7 +1111,15 @@ function photo_purchase_orders_page()
                                 <?php foreach ($items as $item): ?>
                                     <div style="margin-bottom:5px;">
                                         <?php echo esc_html(get_the_title($item['id'])); ?> 
+                                        <?php if (!empty($item['variation_name'])): ?>
+                                            <span style="color:#2563eb; font-weight:bold;">[<?php echo esc_html($item['variation_name']); ?>]</span>
+                                        <?php endif; ?>
                                         <span style="color:#777;">(<?php echo photo_purchase_get_format_label($item['format']); ?> x <?php echo esc_html($item['qty']); ?>)</span>
+                                        <?php if (!empty($item['options']) && is_array($item['options'])): ?>
+                                            <?php foreach ($item['options'] as $opt): ?>
+                                                <div style="font-size:11px; margin-left:10px; color:#16a34a;">・<?php echo esc_html($opt['name']); ?></div>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
                                     </div>
                                 <?php endforeach; ?>
                             </td>
@@ -1341,6 +1359,9 @@ function photo_purchase_orders_page()
                                                     <tr>
                                                         <td>
                                                             <?php echo esc_html(get_the_title($it['id'])); ?>
+                                                            <?php if (!empty($it['variation_name'])): ?>
+                                                                <div style="color:#2563eb; font-weight:bold; margin-top:2px;">[<?php echo esc_html($it['variation_name']); ?>]</div>
+                                                            <?php endif; ?>
                                                             <?php if (!empty($it['options'])): ?>
                                                                 <div style="font-size:0.85em; color:#666; margin-top:2px;">
                                                                     <?php foreach ($it['options'] as $opt): ?>
@@ -1569,7 +1590,12 @@ function photo_purchase_order_edit_view($order_id)
                             if ($items):
                                 foreach ($items as $item): ?>
                                     <div style="margin-bottom:10px; border-bottom:1px solid #eee; padding-bottom:10px;">
-                                        <div style="font-weight:bold;"><?php echo get_the_title($item['id']); ?></div>
+                                        <div style="font-weight:bold;">
+                                            <?php echo get_the_title($item['id']); ?>
+                                            <?php if (!empty($item['variation_name'])): ?>
+                                                <span style="color:#2563eb;"> [<?php echo esc_html($item['variation_name']); ?>]</span>
+                                            <?php endif; ?>
+                                        </div>
                                         <div style="color:#666; font-size:13px;">形式: <?php echo photo_purchase_get_format_label($item['format']); ?> / 数量: <?php echo esc_html($item['qty']); ?></div>
                                         <?php if (!empty($item['options']) && is_array($item['options'])): ?>
                                             <?php foreach ($item['options'] as $opt): ?>
@@ -2924,7 +2950,15 @@ function photo_purchase_order_inquiry_shortcode()
                             <div style="display:flex; align-items:center; padding:12px 16px; background:<?php echo $bg; ?>; gap:12px;">
                                 <div style="flex:1;">
                                     <div style="font-weight:bold;"><?php echo esc_html($title); ?></div>
-                                    <div style="color:#888; font-size:13px;"><?php echo esc_html($fmt_lbl); ?> × <?php echo $qty; ?>
+                                    <?php if (!empty($item['variation_name'])): ?>
+                                        <div style="color:var(--pp-accent); font-size:12px; margin-top:2px;"><?php echo esc_html($item['variation_name']); ?></div>
+                                    <?php endif; ?>
+                                    <?php if (!empty($item['options']) && is_array($item['options'])): 
+                                        foreach ($item['options'] as $opt): ?>
+                                            <div style="color:#666; font-size:11px; margin-top:1px;">+ <?php echo esc_html($opt['name']); ?></div>
+                                        <?php endforeach;
+                                    endif; ?>
+                                    <div style="color:#888; font-size:13px; margin-top:4px;"><?php echo esc_html($fmt_lbl); ?> × <?php echo $qty; ?>
                                     </div>
                                 </div>
                                 <?php if ($dl_url): ?>
@@ -3484,6 +3518,14 @@ function photo_purchase_member_dashboard_shortcode($atts)
                                             <div style="font-size:15px; font-weight:600; color:#334155; margin-bottom:2px;">
                                                 <?php echo esc_html(get_the_title($it['id'])); ?>
                                             </div>
+                                            <?php if (!empty($it['variation_name'])): ?>
+                                                <div style="color:var(--pp-accent); font-size:12px; margin-bottom:3px;"><?php echo esc_html($it['variation_name']); ?></div>
+                                            <?php endif; ?>
+                                            <?php if (!empty($it['options']) && is_array($it['options'])): 
+                                                foreach ($it['options'] as $opt): ?>
+                                                    <div style="color:#64748b; font-size:11px; margin-bottom:1px;">+ <?php echo esc_html($opt['name']); ?></div>
+                                                <?php endforeach;
+                                            endif; ?>
                                             <div style="display:flex; align-items:center; gap:8px;">
                                                 <span style="font-size:12px; color:#94a3b8; font-weight:500;">
                                                     <?php echo photo_purchase_get_format_label($it['format'] ?? ''); ?> x<?php echo $it['qty'] ?? 1; ?>
@@ -3765,14 +3807,30 @@ function photo_purchase_update_stock_for_order($order_id, $is_increment = true) 
                 $qty = intval($item['qty'] ?? 1);
                 
                 $manage_stock = get_post_meta($product_id, '_photo_manage_stock', true) === '1';
+                $use_variations = get_post_meta($product_id, '_photo_use_variations', true) === '1';
+                $v_id = $item['variation_id'] ?? '';
+
                 if ($manage_stock) {
-                    $current_stock = intval(get_post_meta($product_id, '_photo_stock_qty', true));
-                    if ($is_increment) {
-                        $new_stock = $current_stock + $qty;
+                    if ($use_variations && $v_id) {
+                        $variations = get_post_meta($product_id, '_photo_variation_skus', true);
+                        if (is_array($variations)) {
+                            foreach ($variations as &$var) {
+                                if (($var['variation_id'] ?? '') === $v_id) {
+                                    $current_v_stock = intval($var['stock'] ?? 0);
+                                    $var['stock'] = $is_increment ? ($current_v_stock + $qty) : max(0, $current_v_stock - $qty);
+                                    break;
+                                }
+                            }
+                            update_post_meta($product_id, '_photo_variation_skus', $variations);
+                        }
                     } else {
-                        $new_stock = max(0, $current_stock - $qty);
+                        $current_stock = intval(get_post_meta($product_id, '_photo_stock_qty', true));
+                        $new_stock = $is_increment ? ($current_stock + $qty) : max(0, $current_stock - $qty);
+                        update_post_meta($product_id, '_photo_stock_qty', $new_stock);
                     }
-                    update_post_meta($product_id, '_photo_stock_qty', $new_stock);
+                    
+                    // Trigger alert check
+                    photo_purchase_check_stock_alert($product_id);
                 }
             }
         }
@@ -3805,26 +3863,62 @@ function photo_purchase_update_stock_for_order($order_id, $is_increment = true) 
  * Check if stock alert notification should be sent
  */
 function photo_purchase_check_stock_alert($product_id) {
-    $manage_stock = get_post_meta($product_id, '_photo_manage_stock', true);
-    if ($manage_stock !== '1') {
+    if (get_post_meta($product_id, '_photo_manage_stock', true) !== '1') {
         return;
     }
 
-    $current_stock = intval(get_post_meta($product_id, '_photo_stock_qty', true));
     $threshold = intval(get_option('photo_pp_stock_threshold', '5'));
+    $use_variations = get_post_meta($product_id, '_photo_use_variations', true) === '1';
+    $low_stock_items = array();
+    $alert_sent_vars = get_post_meta($product_id, '_photo_stock_vars_alert_sent', true) ?: array();
+    $needs_email = false;
+    $has_updated_sent_meta = false;
 
-    // If stock is above threshold, reset the "alert sent" flag
-    if ($current_stock > $threshold) {
-        delete_post_meta($product_id, '_photo_stock_alert_sent');
-        return;
+    if ($use_variations) {
+        $variations = get_post_meta($product_id, '_photo_variation_skus', true);
+        if (is_array($variations)) {
+            foreach ($variations as $v_id => $v) {
+                $stock = intval($v['stock'] ?? 0);
+                if ($stock <= $threshold) {
+                    $low_stock_items[] = array(
+                        'name' => $v['name'] ?? $v_id,
+                        'stock' => $stock
+                    );
+                    // Check if we already sent alert for this variation
+                    if (empty($alert_sent_vars[$v_id])) {
+                        $needs_email = true;
+                        $alert_sent_vars[$v_id] = true;
+                        $has_updated_sent_meta = true;
+                    }
+                } else {
+                    // Reset alert flag if stock is replenished
+                    if (!empty($alert_sent_vars[$v_id])) {
+                        unset($alert_sent_vars[$v_id]);
+                        $has_updated_sent_meta = true;
+                    }
+                }
+            }
+        }
+    } else {
+        $stock = intval(get_post_meta($product_id, '_photo_stock_qty', true));
+        if ($stock <= $threshold) {
+            $low_stock_items[] = array('name' => '通常在庫', 'stock' => $stock);
+            if (get_post_meta($product_id, '_photo_stock_alert_sent', true) !== '1') {
+                $needs_email = true;
+                update_post_meta($product_id, '_photo_stock_alert_sent', '1');
+            }
+        } else {
+            delete_post_meta($product_id, '_photo_stock_alert_sent');
+        }
     }
 
-    // If stock is below or equal to threshold
-    $alert_sent_for = get_post_meta($product_id, '_photo_stock_alert_sent', true);
-    
-    // If alert already sent for this stock level or lower, don't send again
-    if ($alert_sent_for !== '') {
-        return; 
+    if ($has_updated_sent_meta) {
+        update_post_meta($product_id, '_photo_stock_vars_alert_sent', $alert_sent_vars);
+    }
+
+    // Only send if there's a new item below threshold or first time
+    if (!$needs_email || empty($low_stock_items)) {
+        return;
     }
 
     // Send Alert Email
@@ -3836,22 +3930,22 @@ function photo_purchase_check_stock_alert($product_id) {
     
     $message = "以下の商品の在庫が設定したしきい値を下回りました。\n\n";
     $message .= "商品名: " . $product_title . "\n";
-    $message .= "現在の在庫数: " . $current_stock . " 個\n";
+    $message .= "----------------------------------------\n";
+    foreach ($low_stock_items as $item) {
+        $message .= "■ " . $item['name'] . " : 残り " . $item['stock'] . " 個\n";
+    }
+    $message .= "----------------------------------------\n";
     $message .= "設定しきい値: " . $threshold . " 個以下\n\n";
     $message .= "商品管理画面から在庫の補充を行ってください。\n";
     $message .= admin_url('post.php?post=' . $product_id . '&action=edit') . "\n\n";
-    $message .= "--- \n" . $shop_name;
-
+    
     $from_email = get_option('photo_pp_seller_email', get_option('admin_email'));
     $headers = array('Content-Type: text/plain; charset=UTF-8', "From: $shop_name <$from_email>");
 
     $footer = function_exists('photo_purchase_get_email_footer') ? photo_purchase_get_email_footer() : '';
     $message .= "\n---\n" . $footer;
 
-    if (wp_mail($admin_email, $subject, $message, $headers)) {
-        // Mark as alert sent.
-        update_post_meta($product_id, '_photo_stock_alert_sent', '1');
-    }
+    wp_mail($admin_email, $subject, $message, $headers);
 }
 
 /**

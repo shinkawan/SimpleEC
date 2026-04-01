@@ -221,7 +221,7 @@ function photo_purchase_meta_box_callback($post)
 			combinations.forEach(function(combo, idx) {
 				var v_id = "v_" + Date.now() + "_" + idx;
 				var name = combo.map(c => c.value).join(" / ");
-				var attr_str = JSON.stringify(combo);
+				var attr_str = JSON.stringify(combo).replace(/'/g, "&#39;");
 				
 				var row = `<div class="variation-row" style="display:grid; grid-template-columns: 2fr 1fr 1fr 40px; gap:10px; align-items:center; background:#fff; padding:10px; border:1px solid #ddd; border-radius:4px;">
 					<div>

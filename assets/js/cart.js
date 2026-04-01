@@ -103,7 +103,7 @@ jQuery(document).ready(function ($) {
                     var total = 0;
 
                     cart.forEach(function(cartItem, index) {
-                        var itemDetails = response.data.find(d => d.id == cartItem.id && d.format == cartItem.format);
+                        var itemDetails = response.data.find(d => d.id == cartItem.id && d.format == cartItem.format && d.variation_id == cartItem.variation_id);
                         if (!itemDetails) return;
 
                         var itemPrice = parseInt(itemDetails.price, 10) || 0;
@@ -127,8 +127,14 @@ jQuery(document).ready(function ($) {
                         html += '<div class="ec-drawer-item-info">';
                         html += '<span class="ec-drawer-item-title">' + itemDetails.title + '</span>';
                         html += optLabels;
-                        html += '<div class="ec-drawer-item-meta">' + formatLabel + ' x ' + cartItem.qty + '</div>';
-                        html += '<div class="ec-drawer-item-price">¥' + subtotal.toLocaleString() + '</div>';
+                        var varLabel = cartItem.variation_name ? '<span style="color:var(--pp-accent); font-size:0.75rem; display:block;">' + cartItem.variation_name + '</span>' : '';
+                        html += '<div class="ec-drawer-item-meta">' + varLabel + formatLabel + ' x ' + cartItem.qty + '</div>';
+                        var priceHtml = '¥' + subtotal.toLocaleString();
+                        if (itemPrice < itemDetails.original_price) {
+                            priceHtml += ' <span class="ec-member-discount-badge" style="font-size:10px; background:#ff4d4d; color:#fff; padding:2px 4px; border-radius:3px; margin-left:5px; vertical-align:middle;">会員割引</span>';
+                        }
+
+                        html += '<div class="ec-drawer-item-price">' + priceHtml + '</div>';
                         html += '</div>';
                         html += '<button class="remove-item" data-index="' + index + '" style="background:none; border:none; color:#ccc; cursor:pointer;">&times;</button>';
                         html += '</div>';
@@ -263,9 +269,18 @@ jQuery(document).ready(function ($) {
 
         var $modalFormat = $('#ec-quickview-format');
         $modalFormat.empty();
-        $item.find('.photo-format option').each(function() {
-            $modalFormat.append($(this).clone());
-        });
+        var $originalFormat = $item.find('.photo-format');
+        if ($originalFormat.is('select')) {
+            $modalFormat.replaceWith('<select id="ec-quickview-format" class="photo-format"></select>');
+            $modalFormat = $('#ec-quickview-format'); // refresh reference
+            $originalFormat.find('option').each(function() {
+                $modalFormat.append($(this).clone());
+            });
+            $modalFormat.val($originalFormat.val());
+        } else {
+            // Hidden input for SKU products
+            $modalFormat.replaceWith('<input type="hidden" id="ec-quickview-format" class="photo-format" value="' + $originalFormat.val() + '" data-price="' + ($originalFormat.data('price') || 0) + '">');
+        }
 
         var $galleryContainer = $('#ec-quickview-gallery');
         $galleryContainer.empty();
@@ -288,11 +303,11 @@ jQuery(document).ready(function ($) {
 
         // --- Variation Quickview Support ---
         var $qvVarWrap = $('#ec-quickview-variation-wrap');
-        var $originalVarWrap = $item.find('.ec-variation-selection-wrap');
+        var $originalVarWrap = $item.find('.ec-variation-selection-wrap, .ec-variation-selection-multi-wrap');
         if ($originalVarWrap.length) {
             $qvVarWrap.html($originalVarWrap.clone()).show();
             // Reset selection in modal
-            $qvVarWrap.find('.ec-variation-select').val('');
+            $qvVarWrap.find('.ec-attr-select, .ec-variation-select').val('');
         } else {
             $qvVarWrap.hide().empty();
         }
@@ -410,7 +425,7 @@ jQuery(document).ready(function ($) {
 
                     var itemsTotal = 0;
                     cart.forEach(function (cartItem, index) {
-                        var itemDetails = response.data.find(d => d.id == cartItem.id && d.format == cartItem.format);
+                        var itemDetails = response.data.find(d => d.id == cartItem.id && d.format == cartItem.format && d.variation_id == cartItem.variation_id);
                         if (!itemDetails) return;
 
                         var itemPrice = parseInt(itemDetails.price, 10) || 0;
@@ -433,7 +448,17 @@ jQuery(document).ready(function ($) {
 
                         html += '<tr style="border-bottom:1px solid #eee;">';
                         html += '<td style="padding:15px;">' + itemDetails.thumb + '</td>';
-                        html += '<td style="padding:15px;"><strong>' + itemDetails.title + '</strong><br><small style="color:#666;">タイプ: ' + formatLabel + '</small>' + optHtml + '</td>';
+                        
+                        var nameLine = '<div style="font-weight:bold; margin-bottom:4px;">' + itemDetails.title + '</div>';
+                        var displayVarName = cartItem.variation_name || itemDetails.variation_name || '';
+                        if (displayVarName) {
+                            nameLine += '<div style="font-size:12px; color:var(--pp-accent); margin-bottom:4px;">' + displayVarName + '</div>';
+                        }
+                        if (unitTotal < (parseInt(itemDetails.original_price, 10) || 0)) {
+                            nameLine += '<div style="margin-bottom:4px;"><span class="ec-member-discount-badge" style="font-size:10px; background:#ff4d4d; color:#fff; padding:2px 6px; border-radius:3px; font-weight:normal;">会員割引適用中</span></div>';
+                        }
+                        
+                        html += '<td style="padding:15px;">' + nameLine + '<small style="color:#666;">タイプ: ' + formatLabel + '</small>' + optHtml + '</td>';
                         html += '<td style="padding:15px; text-align:right;">' + unitTotal.toLocaleString() + ' 円</td>';
                         html += '<td style="padding:15px; text-align:center;">' + cartItem.qty + '</td>';
                         html += '<td style="padding:15px; text-align:right;">' + subtotal.toLocaleString() + ' 円</td>';
@@ -604,12 +629,22 @@ jQuery(document).ready(function ($) {
         var $qtyInput = $item.find('.photo-qty');
         var $priceDisplay = $item.find('.photo-price-val');
         
-        var basePrice = parseInt($formatSelect.find('option:selected').data('price'), 10) || 0;
+        // Base price from format (select or hidden input)
+        var basePrice = 0;
+        if ($formatSelect.is('select')) {
+            basePrice = parseInt($formatSelect.find('option:selected').data('price'), 10) || 0;
+        } else {
+            basePrice = parseInt($formatSelect.data('price'), 10) || 0;
+        }
         
         // Variation Price Add-on
-        var $varSelect = $item.find('.ec-variation-select');
         var varPrice = 0;
-        if ($varSelect.length) {
+        var $varMultiInput = $item.find('.ec-variation-id-input');
+        var $varSelect = $item.find('.ec-variation-select');
+        
+        if ($varMultiInput.length && $varMultiInput.data('current-v')) {
+            varPrice = parseInt($varMultiInput.data('current-v').price, 10) || 0;
+        } else if ($varSelect.length) {
             varPrice = parseInt($varSelect.find('option:selected').data('price'), 10) || 0;
         }
 
@@ -617,30 +652,9 @@ jQuery(document).ready(function ($) {
         $item.find('.custom-opt-check:checked').each(function() {
             extra += (parseInt($(this).val(), 10) || 0);
         });
+
         var qty = parseInt($qtyInput.val(), 10) || 1;
         var total = (basePrice + varPrice + extra) * qty;
-        
-        			if (v) {
-				// Update Price Display simulation
-				if (currentPrice) {
-					let newPrice = currentPrice + parseInt(v.price || 0);
-					$modal.find(".pp-modal-price").text("¥" + newPrice.toLocaleString());
-				}
-
-				// Real-time Stock Validation
-				const $addBtn = $modal.find(".photo-purchase-add-to-cart-btn");
-				const stock = parseInt(v.stock || 0);
-				
-				if (stock <= 0) {
-					$addBtn.prop("disabled", true)
-						   .css("opacity", "0.6")
-						   .text("売り切れ (Sold Out)");
-				} else {
-					$addBtn.prop("disabled", false)
-						   .css("opacity", "1")
-						   .text("カートに追加");
-				}
-			}
         
         if ($priceDisplay.length) {
             $priceDisplay.text(total.toLocaleString());
@@ -701,7 +715,7 @@ jQuery(document).ready(function ($) {
         }
 
         if (match) {
-            $idInput.val(match.id).data('current-v', match).trigger('change');
+            $idInput.val(match.id).data('current-v', match).data('current-v-name', match.name).trigger('change');
             var stock = parseInt(match.stock || 0);
             if (stock <= 0) {
                 $statusMsg.text('申し訳ございません。この組み合わせは売り切れです。').css('color', '#dc2626');
@@ -711,7 +725,7 @@ jQuery(document).ready(function ($) {
                 $addBtn.prop('disabled', false).css('opacity', '1').text('カートに追加');
             }
         } else {
-            $idInput.val('').data('current-v', null).trigger('change');
+            $idInput.val('').data('current-v', null).data('current-v-name', '').trigger('change');
             $statusMsg.text('申し訳ございませんが、選択した組み合わせは存在しません。').css('color', '#dc2626');
             $addBtn.prop('disabled', true).css('opacity', '0.6').text('選択不可');
         }
@@ -726,7 +740,7 @@ jQuery(document).ready(function ($) {
         var photoId = $(this).data('id');
         var $formatSelect = $item.find('.photo-format');
         var format = $formatSelect.val() || 'digital';
-        var subReq = $formatSelect.find('option:selected').data('sub-requires-shipping');
+        var subReq = $formatSelect.is('select') ? $formatSelect.find('option:selected').data('sub-requires-shipping') : $formatSelect.data('sub-requires-shipping');
 
         if ($formatSelect.length && !$formatSelect.val()) { alert('購入形式を選択してください。'); return; }
 
@@ -794,9 +808,9 @@ jQuery(document).ready(function ($) {
         e.preventDefault();
         var photoId = $(this).data('id');
         var $modal = $(this).closest('.ec-quickview-layout');
-        var $formatSelect = $('#ec-quickview-format');
+        var $formatSelect = $modal.find('.photo-format');
         var format = $formatSelect.val();
-        var subReq = $formatSelect.find('option:selected').data('sub-requires-shipping');
+        var subReq = $formatSelect.is('select') ? $formatSelect.find('option:selected').data('sub-requires-shipping') : $formatSelect.data('sub-requires-shipping');
         var qty = parseInt($('#ec-quickview-qty').val(), 10) || 1;
 
         if (!format) { alert('購入形式を選択してください。'); return; }
@@ -817,8 +831,12 @@ jQuery(document).ready(function ($) {
             if ($varMultiInput.length) {
                 variationId = $varMultiInput.val();
                 if (!variationId) { alert('オプションをすべて選択してください。'); return; }
+                
+                variationName = $varMultiInput.data('current-v-name');
                 var vData = $varMultiInput.data('current-v');
-                variationName = vData ? vData.name : '';
+                if (!variationName && vData) {
+                    variationName = vData.name;
+                }
                 var varStock = parseInt(vData ? vData.stock : 0, 10);
             } else if ($varSelect.length) {
                 variationId = $varSelect.val();

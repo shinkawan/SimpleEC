@@ -319,7 +319,7 @@
   <header>
     <h1>🛒シンプルECプラグイン</h1>
     <p>管理者・オーナー向けマニュアル</p>
-    <div class="version-badge">v4.0.0</div>
+    <div class="version-badge">v4.1.0</div>
   </header>
 
   <div class="container">
@@ -331,6 +331,7 @@
         <li><a href="#overview">1. プラグイン概要</a></li>
         <li><a href="#setup">2. 初期設定（各種設定）</a></li>
         <li><a href="#photo">3. 商品の登録・管理</a></li>
+        <li><a href="#sku-management">3.1 SKUバリエーション管理 (サイズ・カラー別設定) [v4.1.0]</a></li>
         <li><a href="#bulk">4. メディアライブラリからの一括登録</a></li>
         <li><a href="#order">5. 注文管理（受注一覧）</a></li>
         <li><a href="#product-labels">6. 商品ラベル（リボン）の設定 [v3.11.0]</a></li>
@@ -355,6 +356,7 @@
         <li><a href="#security">25. セキュリティと信頼性</a></li>
         <li><a href="#faq">26. よくある質問</a></li>
         <li><a href="#changelog">27. アップデート履歴</a></li>
+        <li style="margin-top:10px; font-weight:700; color:#e11d48;"><span class="badge" style="background:#ffe4e6; color:#e11d48;">NEW</span> <a href="#sku-management">SKU別在庫管理の設定ガイド</a></li>
       </ul>
     </nav>
 
@@ -562,6 +564,60 @@
             「在庫管理を行う」にチェックを入れると、在庫数に基づいて販売を制限。0になると自動で「売り切れ」表示になります。
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- 3.1 SKUバリエーション管理 -->
+    <section id="sku-management">
+      <h2>3.1 SKUバリエーション管理 (v4.1.0～)</h2>
+      <p>「サイズ」や「カラー」ごとに異なる価格や在庫を設定する場合に使用します。本格的な物販やアパレル販売に最適です。</p>
+      
+      <div class="card" style="border-left: 5px solid #4f46e5;">
+        <h4>⚙️ 設定手順</h4>
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <strong>バリエーションの有効化</strong><br>
+            商品編集画面の「在庫・価格設定」パネルにある<strong>「バリエーションを使用する」</strong>にチェックを入れます。
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <strong>属性の定義</strong><br>
+            「属性の定義」エリアに、属性名（例: <code>カラー</code>）と値（例: <code>赤, 青, 黄</code>）を入力します。複数の属性（例: サイズとカラー）を組み合わせることも可能です。
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <strong>組み合わせの自動生成</strong><br>
+            <strong>「バリエーションを自動生成」</strong>ボタンを押すと、すべての組み合わせがリスト化されます。
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <strong>一括設定ツールの活用（時短！）</strong><br>
+            生成された大量の項目を一つずつ入力するのは大変です。リスト上部の<strong>「一括設定 (Bulk Actions)」</strong>エリアを使いましょう。
+            <ul>
+              <li><strong>一括価格設定</strong>: すべてのバリエーションに一律の加算額を設定。</li>
+              <li><strong>SKU一括生成</strong>: 「ITEM-RED-」等のプレフィックスを入力すると、連番のSKU（ITEM-RED-001など）が自動付与されます。</li>
+            </ul>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-body">
+            <strong>個別の微調整・保存</strong><br>
+            特定のサイズだけ在庫を減らしたり、価格を変えたりした後、商品の「更新」ボタンを押して保存します。
+          </div>
+        </div>
+      </div>
+
+      <div class="alert alert-info">
+        <strong>💡 フロントエンドの表示について</strong><br>
+        設定を保存すると、商品詳細ページでは「カラー」や「サイズ」が個別のセレクトボックスとして表示されます。在庫切れの組み合わせを選択すると、カートボタンが自動的に「売り切れ」に切り替わります。
       </div>
     </section>
 

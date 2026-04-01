@@ -294,29 +294,34 @@ function photo_purchase_gallery_shortcode($atts)
                     <?php endif; ?>
                     <h3><?php the_title(); ?></h3>
 
-                    <div class="format-selection" style="margin-bottom: 10px;">
-                        <select class="photo-format" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #ddd;">
-                            <?php if ($p_digital > 0): ?>
-                                <option value="digital" data-price="<?php echo $p_digital; ?>">
-                                    <?php echo sprintf(__('ダウンロード - %d円', 'photo-purchase'), $p_digital); ?>
-                                </option>
-                            <?php endif; ?>
-                            <?php if ($p_l > 0): ?>
-                                <option value="l_size" data-price="<?php echo $p_l; ?>">
-                                    <?php echo sprintf(__('配送品 - %s円', 'photo-purchase'), number_format($p_l)); ?>
-                                </option>
-                            <?php endif; ?>
-                            <?php if ($is_sub && $p_sub > 0): 
-                                $interval_labels = ['day' => '日', 'week' => '週', 'month' => 'ヶ月', 'year' => '年'];
-                                $label = ($sub_interval_count > 1) ? $sub_interval_count . $interval_labels[$sub_interval] : $interval_labels[$sub_interval];
-                                $sub_req = get_post_meta($post_id, '_photo_sub_requires_shipping', true) === '1' ? '1' : '0';
-                                ?>
-                                <option value="subscription" data-price="<?php echo $p_sub; ?>" data-is-sub="1" data-sub-requires-shipping="<?php echo $sub_req; ?>">
-                                    <?php echo sprintf(__('サブスクリプション (%s) - %s円', 'photo-purchase'), $label, number_format($p_sub)); ?>
-                                </option>
-                            <?php endif; ?>
-                        </select>
-                    </div>
+                    <?php if (!$use_variations): ?>
+                        <div class="format-selection" style="margin-bottom: 10px;">
+                            <select class="photo-format" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #ddd;">
+                                <?php if ($p_digital > 0): ?>
+                                    <option value="digital" data-price="<?php echo $p_digital; ?>">
+                                        <?php echo sprintf(__('ダウンロード - %d円', 'photo-purchase'), $p_digital); ?>
+                                    </option>
+                                <?php endif; ?>
+                                <?php if ($p_l > 0): ?>
+                                    <option value="l_size" data-price="<?php echo $p_l; ?>">
+                                        <?php echo sprintf(__('配送品 - %s円', 'photo-purchase'), number_format($p_l)); ?>
+                                    </option>
+                                <?php endif; ?>
+                                <?php if ($is_sub && $p_sub > 0): 
+                                    $interval_labels = ['day' => '日', 'week' => '週', 'month' => 'ヶ月', 'year' => '年'];
+                                    $label = ($sub_interval_count > 1) ? $sub_interval_count . $interval_labels[$sub_interval] : $interval_labels[$sub_interval];
+                                    $sub_req = get_post_meta($post_id, '_photo_sub_requires_shipping', true) === '1' ? '1' : '0';
+                                    ?>
+                                    <option value="subscription" data-price="<?php echo $p_sub; ?>" data-is-sub="1" data-sub-requires-shipping="<?php echo $sub_req; ?>">
+                                        <?php echo sprintf(__('サブスクリプション (%s) - %s円', 'photo-purchase'), $label, number_format($p_sub)); ?>
+                                    </option>
+                                <?php endif; ?>
+                            </select>
+                        </div>
+                    <?php else: ?>
+                        <!-- Variation mode: default to shipping product base price -->
+                        <input type="hidden" class="photo-format" value="l_size" data-price="<?php echo $p_l ?: 0; ?>">
+                    <?php endif; ?>
 
                     <?php if ($use_variations && !empty($variations_data)): 
                         // Pro-tip: Pre-group attributes for separate selects
