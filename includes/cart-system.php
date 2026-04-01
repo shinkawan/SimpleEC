@@ -212,10 +212,22 @@ function photo_purchase_validate_reorder()
         foreach ($items as $item) {
             $id = intval($item['id']);
             $format = sanitize_text_field($item['format'] ?? 'digital');
+            $variation_id = !empty($item['variation_id']) ? sanitize_text_field($item['variation_id']) : '';
 
             $is_sold_out = get_post_meta($id, '_photo_is_sold_out', true) === '1';
             $manage_stock = get_post_meta($id, '_photo_manage_stock', true) === '1';
             $stock_qty = intval(get_post_meta($id, '_photo_stock_qty', true));
+
+            // Variation Stock Check
+            if ($variation_id) {
+                $variations = json_decode(get_post_meta($id, '_photo_variations', true), true);
+                if ($variations && isset($variations[$variation_id])) {
+                    $v = $variations[$variation_id];
+                    if (isset($v['stock']) && intval($v['stock']) <= 0) {
+                        $is_sold_out = true; 
+                    }
+                }
+            }
 
             if ($is_sold_out || ($manage_stock && $stock_qty <= 0)) {
                 $sold_out_titles[] = get_the_title($id);

@@ -916,7 +916,7 @@ jQuery(document).ready(function ($) {
                     var cart = getCart();
                     var addedCount = 0;
                     response.data.available_items.forEach(function(item) {
-                        var existingIdx = cart.findIndex(c => c.id == item.id && c.format == item.format && JSON.stringify(c.options || []) === JSON.stringify(item.options || []));
+                        var existingIdx = cart.findIndex(c => c.id == item.id && c.format == item.format && (c.variation_id || '') == (item.variation_id || '') && JSON.stringify(c.options || []) === JSON.stringify(item.options || []));
                         if (existingIdx > -1) {
                             cart[existingIdx].qty = (parseInt(cart[existingIdx].qty, 10) || 0) + (parseInt(item.qty, 10) || 1);
                         } else {
@@ -925,6 +925,8 @@ jQuery(document).ready(function ($) {
                                 format: item.format,
                                 qty: parseInt(item.qty, 10) || 1,
                                 options: item.options || [],
+                                variation_id: item.variation_id || '',
+                                variation_name: item.variation_name || '',
                                 sub_requires_shipping: item.sub_requires_shipping === true || item.sub_requires_shipping === '1'
                             });
                         }
