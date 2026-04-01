@@ -319,7 +319,7 @@
   <header>
     <h1>🛒シンプルECプラグイン</h1>
     <p>管理者・オーナー向けマニュアル</p>
-    <div class="version-badge">v4.1.0</div>
+    <div class="version-badge">v4.2.4</div>
   </header>
 
   <div class="container">
@@ -356,7 +356,8 @@
         <li><a href="#security">25. セキュリティと信頼性</a></li>
         <li><a href="#faq">26. よくある質問</a></li>
         <li><a href="#changelog">27. アップデート履歴</a></li>
-        <li style="margin-top:10px; font-weight:700; color:#e11d48;"><span class="badge" style="background:#ffe4e6; color:#e11d48;">NEW</span> <a href="#sku-management">SKU別在庫管理の設定ガイド</a></li>
+        <li style="margin-top:10px; font-weight:700; color:#e11d48;"><span class="badge"
+            style="background:#ffe4e6; color:#e11d48;">NEW</span> <a href="#sku-management">SKU別在庫管理の設定ガイド</a></li>
       </ul>
     </nav>
 
@@ -571,7 +572,7 @@
     <section id="sku-management">
       <h2>3.1 SKUバリエーション管理 (v4.1.0～)</h2>
       <p>「サイズ」や「カラー」ごとに異なる価格や在庫を設定する場合に使用します。本格的な物販やアパレル販売に最適です。</p>
-      
+
       <div class="card" style="border-left: 5px solid #4f46e5;">
         <h4>⚙️ 設定手順</h4>
         <div class="step">
@@ -1185,7 +1186,8 @@
       <!-- 22. かご落ちリカバリー機能 -->
       <section id="abandoned-cart">
         <h2>22. かご落ちリカバリー機能（自動リマインド） [v4.0.0]</h2>
-        <p>カートに商品を入れたまま購入を完了せずに離脱したユーザーに対して、自動的にリマインドメールを送信し、購買率（コンバージョン率）を高める機能です。v4.0.0 では成果を可視化するダッシュボードと配信停止機能が追加されました。</p>
+        <p>カートに商品を入れたまま購入を完了せずに離脱したユーザーに対して、自動的にリマインドメールを送信し、購買率（コンバージョン率）を高める機能です。v4.0.0
+          では成果を可視化するダッシュボードと配信停止機能が追加されました。</p>
 
         <div class="card">
           <h4>🛠 設定方法</h4>
@@ -1220,7 +1222,8 @@
           <ul>
             <li><strong>データの捕捉:</strong> ユーザーがメールアドレスを入力した（またはログインしている）状態でカートを操作すると、自動的にデータの同期が始まります。</li>
             <li><strong>条件判定:</strong> 最後にカートを更新してから指定した時間が経過し、かつその間に注文が完了していない場合にのみメールが送信されます。</li>
-            <li><strong>ワンクリック復元:</strong> 送信されるメールには「専用の復元リンク」が含まれています。ユーザーがリンクをクリックすると、以前追加した商品がカートに入った状態でサイトが開きます。</li>
+            <li><strong>ワンクリック復元:</strong> 送信されるメールには「専用の復元リンク」が含まれています。ユーザーがリンクをクリックすると、以前追加した商品がカートに入った状態でサイトが開きます。
+            </li>
           </ul>
           <div class="note">
             <strong>※注意:</strong> メールの送信には WordPress の WP-Cron 機能を使用しています。サイトへのアクセスが全くない時間は、送信時間が多少前後する場合があります。
@@ -1286,10 +1289,12 @@
           <h4>📄 自動生成と表示</h4>
           <ul style="padding-left:20px;">
             <li><strong>固定ページの自動生成</strong>: プラグインを有効化した際、自動的に「会員規約」という固定ページが作成され、ショートコード
-              <code>[ec_membership_terms]</code> が挿入されます。</li>
+              <code>[ec_membership_terms]</code> が挿入されます。
+            </li>
             <li><strong>デフォルト規約のセット</strong>: 初回インストール時に、標準的な第1条〜第12条からなる規約文がデータベースに保存されます。</li>
             <li><strong>ショートコード <code>[ショップ名]</code></strong>: 規約本文内で <code>[ショップ名]</code> または
-              <code>[ec_shop_name]</code> を使用すると、WordPressの設定にある「サイト名」が自動的に表示されます。</li>
+              <code>[ec_shop_name]</code> を使用すると、WordPressの設定にある「サイト名」が自動的に表示されます。
+            </li>
           </ul>
         </div>
 
@@ -1360,6 +1365,7 @@
       <section id="changelog">
         <h2>27. アップデート履歴</h2>
         <ul>
+          <li><strong>v4.2.4</strong> - 再購入（リピート注文）機能の安定性向上。SKU（バリエーション）商品の情報を確実に保持し、通常商品（SKUなし）も正しくカート内アイテムと照合できるようロジックを最適化しました。</li>
           <li><strong>v4.0.0</strong> -
             かご落ちリカバリー機能の正式追加。自動リマインドメール送信、統計ダッシュボードによる成果可視化、および配信停止（アンサブスクライブ）機能の実装。</li>
           <li><strong>v3.12.5</strong> -
@@ -1376,7 +1382,7 @@
   </div>
 
   <footer>
-    <p>シンプルECプラグイン v4.0.0 &nbsp;|&nbsp; 管理マニュアル</p>
+    <p>シンプルECプラグイン v4.2.4 &nbsp;|&nbsp; 管理マニュアル</p>
   </footer>
 
 </body>
