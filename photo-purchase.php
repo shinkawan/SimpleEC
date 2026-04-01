@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: Simple EC
- * Description: 簡易的な写真・デジタルコンテンツ販売プラグイン。Stripe、PayPay、代引き、銀行振込に対応。
+ * Description: 写真・デジタル・物販まで対応し、SKU管理・会員割引・かご落ち対策・インボイス対応などを備えた高機能ECプラグイン。Stripe、PayPay、代引き、銀行振込に対応。
  * Version: 4.2.4
  * Author: アートフレア株式会社
  * Author URI: https://www.artflair.co.jp/
