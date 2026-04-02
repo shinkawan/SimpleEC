@@ -18,6 +18,19 @@ define('PHOTO_PURCHASE_PATH', plugin_dir_path(__FILE__));
 define('PHOTO_PURCHASE_URL', plugin_dir_url(__FILE__));
 
 /**
+ * DB Update on version change
+ */
+add_action('admin_init', function() {
+	$installed_ver = get_option('photo_purchase_db_version');
+	if ($installed_ver !== PHOTO_PURCHASE_VERSION) {
+		if (function_exists('photo_purchase_create_db_table')) {
+			photo_purchase_create_db_table();
+			update_option('photo_purchase_db_version', PHOTO_PURCHASE_VERSION);
+		}
+	}
+});
+
+/**
  * Create Database Table on Activation
  */
 function photo_purchase_create_db_table()
@@ -127,6 +140,7 @@ function photo_purchase_create_db_table()
 		reminder_sent_count int(11) DEFAULT 0 NOT NULL,
 		recovery_token varchar(100) NOT NULL,
 		clicked_at datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
+		sent_at datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
 		recovered_at datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
 		unsubscribed tinyint(1) DEFAULT 0 NOT NULL,
 		PRIMARY KEY  (id),
@@ -1171,28 +1185,67 @@ function photo_purchase_settings_page()
 				$recovery_rate = ($stats->sent > 0) ? round(($stats->recovered / $stats->sent) * 100, 1) : 0;
 				$click_rate = ($stats->sent > 0) ? round(($stats->clicked / $stats->sent) * 100, 1) : 0;
 				?>
-				<div class="photo-stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 20px; margin-top: 20px;">
-					<div style="background:#fff; padding:20px; border-radius:8px; border:1px solid #ddd; text-align:center;">
-						<div style="font-size:12px; color:#666;"><?php _e('捕捉済みカート', 'photo-purchase'); ?></div>
-						<div style="font-size:24px; font-weight:bold; color:#333;"><?php echo number_format($stats->total); ?></div>
-					</div>
-					<div style="background:#fff; padding:20px; border-radius:8px; border:1px solid #ddd; text-align:center;">
-						<div style="font-size:12px; color:#666;"><?php _e('メール送信数', 'photo-purchase'); ?></div>
-						<div style="font-size:24px; font-weight:bold; color:#0073aa;"><?php echo number_format($stats->sent); ?></div>
-					</div>
-					<div style="background:#fff; padding:20px; border-radius:8px; border:1px solid #ddd; text-align:center;">
-						<div style="font-size:12px; color:#666;"><?php _e('クリック数 (率)', 'photo-purchase'); ?></div>
-						<div style="font-size:24px; font-weight:bold; color:#dfb613;"><?php echo number_format($stats->clicked); ?> <span style="font-size:14px; font-weight:normal;">(<?php echo $click_rate; ?>%)</span></div>
-					</div>
-					<div style="background:#fff; padding:20px; border-radius:8px; border:1px solid #ddd; text-align:center;">
-						<div style="font-size:12px; color:#666;"><?php _e('リカバリー成功 (率)', 'photo-purchase'); ?></div>
-						<div style="font-size:24px; font-weight:bold; color:#28a745;"><?php echo number_format($stats->recovered); ?> <span style="font-size:14px; font-weight:normal;">(<?php echo $recovery_rate; ?>%)</span></div>
-					</div>
-					<div style="background:#fff; padding:20px; border-radius:8px; border:1px solid #ddd; text-align:center;">
-						<div style="font-size:12px; color:#666;"><?php _e('配信停止数', 'photo-purchase'); ?></div>
-						<div style="font-size:24px; font-weight:bold; color:#dc3545;"><?php echo number_format($stats->unsubscribed); ?></div>
-					</div>
 				</div>
+				
+				<h3 class="title" style="margin-top: 30px;"><?php _e('最近の履歴 (最新10件)', 'photo-purchase'); ?></h3>
+				<table class="wp-list-table widefat fixed striped" style="margin-top: 10px;">
+					<thead>
+						<tr>
+							<th style="width: 200px;">メールアドレス</th>
+							<th style="width: 150px;">最終アクティブ</th>
+							<th style="width: 150px;">送信日時</th>
+							<th>ステータス</th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php
+						$recent_activities = $wpdb->get_results("SELECT * FROM $table_name ORDER BY last_active DESC LIMIT 10");
+						if ($recent_activities):
+							foreach ($recent_activities as $activity):
+								$status_label = '';
+								$status_color = '';
+								if ($activity->status === 'recovered') {
+									$status_label = 'リカバリ済み';
+									$status_color = '#28a745';
+								} elseif ($activity->unsubscribed == 1) {
+									$status_label = '配信停止済み';
+									$status_color = '#dc3545';
+								} elseif ($activity->clicked_at !== '0000-00-00 00:00:00') {
+									$status_label = 'クリック済み';
+									$status_color = '#dfb613';
+								} elseif ($activity->reminder_sent_count > 0) {
+									$status_label = '送信済み';
+									$status_color = '#0073aa';
+								} else {
+									$status_label = '待機中';
+									$status_color = '#666';
+								}
+								?>
+								<tr>
+									<td><?php echo esc_html($activity->email); ?></td>
+									<td><?php echo esc_html($activity->last_active); ?></td>
+									<td><?php echo ($activity->sent_at !== '0000-00-00 00:00:00') ? esc_html($activity->sent_at) : '-'; ?></td>
+									<td>
+										<span style="background: <?php echo $status_color; ?>; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 11px;">
+											<?php echo esc_html($status_label); ?>
+										</span>
+									</td>
+								</tr>
+								<?php
+							endforeach;
+						else:
+							?>
+							<tr>
+								<td colspan="4" style="text-align:center; padding:20px;">履歴はありません。</td>
+							</tr>
+							<?php
+						endif;
+						?>
+					</tbody>
+				</table>
+				<p style="margin-top: 15px;">
+					<a href="<?php echo admin_url('admin.php?page=photo-purchase-logs&log_level=info'); ?>" class="button">詳細なシステムログを確認する</a>
+				</p>
 			<?php elseif ($active_tab == 'membership_terms'): ?>
 				<h3 class="title"><?php _e('会員規約の設定', 'photo-purchase'); ?></h3>
 				<p class="description">

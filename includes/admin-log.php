@@ -59,7 +59,7 @@ function photo_purchase_log_page()
         <p>決済エラーやWebhookの失敗など、システムの稼働状況を確認できます。（最新100件を表示）</p>
         
         <div class="photo-log-controls" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; background: #fff; padding: 15px; border: 1px solid #ccd0d4; border-radius: 4px;">
-            <form method="get" style="display: flex; align-items: center; gap: 10px;">
+            <form method="get" action="<?php echo admin_url('edit.php'); ?>" style="display: flex; align-items: center; gap: 10px;">
                 <input type="hidden" name="post_type" value="photo_product">
                 <input type="hidden" name="page" value="photo-purchase-logs">
                 <label for="log_level"><strong>レベルで絞り込み:</strong></label>

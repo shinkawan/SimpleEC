@@ -68,8 +68,11 @@ function photo_purchase_process_abandoned_carts() {
 
         // 3. Send the recovery email
         if (photo_purchase_send_recovery_email($cart)) {
-            // 4. Update reminder count
-            $wpdb->update($table_name, array('reminder_sent_count' => 1), array('id' => $cart->id));
+            // 4. Update reminder count and sent timestamp
+            $wpdb->update($table_name, array(
+                'reminder_sent_count' => 1,
+                'sent_at' => current_time('mysql')
+            ), array('id' => $cart->id));
 
             // Log the recovery email send
             if (function_exists('photo_purchase_log')) {
