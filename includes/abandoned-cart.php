@@ -44,8 +44,8 @@ function photo_purchase_process_abandoned_carts() {
          AND unsubscribed = 0 
          AND last_active <= %s 
          AND last_active >= %s",
-        date('Y-m-d H:i:s', time() - ($delay_hours * HOUR_IN_SECONDS)),
-        date('Y-m-d H:i:s', time() - ($max_delay_hours * HOUR_IN_SECONDS))
+        date('Y-m-d H:i:s', current_time('timestamp') - ($delay_hours * HOUR_IN_SECONDS)),
+        date('Y-m-d H:i:s', current_time('timestamp') - ($max_delay_hours * HOUR_IN_SECONDS))
     ));
 
     if (empty($abandoned_carts)) {
@@ -70,6 +70,14 @@ function photo_purchase_process_abandoned_carts() {
         if (photo_purchase_send_recovery_email($cart)) {
             // 4. Update reminder count
             $wpdb->update($table_name, array('reminder_sent_count' => 1), array('id' => $cart->id));
+
+            // Log the recovery email send
+            if (function_exists('photo_purchase_log')) {
+                photo_purchase_log('info', 'かご落ちリカバリーメールを送信しました。', array(
+                    'email' => $cart->email,
+                    'cart_id' => $cart->id
+                ));
+            }
         }
     }
 }
