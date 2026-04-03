@@ -150,6 +150,11 @@ function photo_purchase_create_db_table()
 	dbDelta($sql_abandoned);
 }
 
+// Include Admin Shortcodes Helper on init to avoid early translation loading notices
+add_action('init', function() {
+	require_once(PHOTO_PURCHASE_PATH . 'includes/admin-shortcodes.php');
+});
+
 /**
  * Register Custom Post Type: Photo product
  */
@@ -245,6 +250,17 @@ function photo_purchase_admin_menus()
 		'photo-purchase-logs',
 		'photo_purchase_log_page'
 	);
+
+	// ショートコード一覧
+	add_submenu_page(
+		'edit.php?post_type=photo_product',
+		__('ショートコード', 'photo-purchase'),
+		__('ショートコード', 'photo-purchase'),
+		'manage_options',
+		'photo-purchase-shortcodes',
+		'photo_purchase_shortcode_helper_page'
+	);
+
 	add_action('admin_action_photo_purchase_duplicate_product', 'photo_purchase_handle_duplicate_product');
 }
 add_action('admin_menu', 'photo_purchase_admin_menus');

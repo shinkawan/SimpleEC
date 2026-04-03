@@ -14,13 +14,22 @@ if (!defined('ABSPATH')) {
 function photo_purchase_gallery_shortcode($atts)
 {
     $atts = shortcode_atts(array(
-        'event' => '', // Default event slug via attribute
+        'event' => '', // Default event slug via attribute (legacy)
+        'category' => '', // Category slug or comma-separated list
+        'ids' => '', // Comma-separated product IDs
+        'hide_filters' => 'false',
     ), $atts);
+
+    $hide_filters = ($atts['hide_filters'] === 'true');
+    $ids = !empty($atts['ids']) ? array_map('intval', explode(',', $atts['ids'])) : [];
+    
+    // Default cat if none in URL
+    $default_cat = !empty($atts['category']) ? $atts['category'] : $atts['event'];
 
     // Search keyword
     $search_query = isset($_GET['ec_search']) ? sanitize_text_field($_GET['ec_search']) : '';
     // Category slug (ec_cat or event_slug)
-    $event_slug = isset($_GET['ec_cat']) ? sanitize_text_field($_GET['ec_cat']) : (isset($_GET['event_slug']) ? sanitize_text_field($_GET['event_slug']) : $atts['event']);
+    $event_slug = isset($_GET['ec_cat']) ? sanitize_text_field($_GET['ec_cat']) : (isset($_GET['event_slug']) ? sanitize_text_field($_GET['event_slug']) : $default_cat);
     // Sort
     $sort = isset($_GET['ec_sort']) ? sanitize_text_field($_GET['ec_sort']) : 'newness';
 
@@ -28,6 +37,11 @@ function photo_purchase_gallery_shortcode($atts)
         'post_type' => 'photo_product',
         'posts_per_page' => -1,
     );
+
+    if (!empty($ids)) {
+        $args['post__in'] = $ids;
+        $args['orderby'] = 'post__in';
+    }
 
     // Sorting Logic
     switch ($sort) {
@@ -47,8 +61,10 @@ function photo_purchase_gallery_shortcode($atts)
             break;
         case 'newness':
         default:
-            $args['orderby'] = 'menu_order';
-            $args['order'] = 'ASC';
+            if (empty($ids)) {
+                $args['orderby'] = 'menu_order';
+                $args['order'] = 'ASC';
+            }
             break;
     }
 
@@ -57,11 +73,13 @@ function photo_purchase_gallery_shortcode($atts)
     }
 
     if (!empty($event_slug)) {
+        $terms = explode(',', $event_slug);
         $args['tax_query'] = array(
             array(
                 'taxonomy' => 'photo_event',
                 'field' => 'slug',
-                'terms' => $event_slug,
+                'terms' => $terms,
+                'operator' => 'IN',
             ),
         );
     }
@@ -80,17 +98,18 @@ function photo_purchase_gallery_shortcode($atts)
         <div class="ec-user-status-bar" style="background: #f8fafc; padding: 12px 25px; border-radius: 15px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; border: 1px solid #e2e8f0;">
             <div style="font-size: 14px; font-weight: 600; color: #334155; display: flex; align-items: center; gap: 8px;">
                 <span style="display:inline-block; width:8px; height:8px; background:#10b981; border-radius:50%;"></span>
-                <?php echo sprintf(__('ようこそ、%s 様', 'photo-purchase'), esc_html($user_name)); ?>
+                    <?php echo sprintf(__('ようこそ、%s 様', 'photo-purchase'), esc_html($user_name)); ?>
+                </div>
+                <div style="display: flex; gap: 15px;">
+                    <a href="<?php echo esc_url($mypage_url); ?>" style="font-size: 13px; color: #4f46e5; font-weight: 700; text-decoration: none;"><?php _e('マイページ', 'photo-purchase'); ?></a>
+                    <a href="<?php echo esc_url($logout_url); ?>" style="font-size: 13px; color: #ef4444; font-weight: 700; text-decoration: none;"><?php _e('ログアウト', 'photo-purchase'); ?></a>
+                </div>
             </div>
-            <div style="display: flex; gap: 15px;">
-                <a href="<?php echo esc_url($mypage_url); ?>" style="font-size: 13px; color: #4f46e5; font-weight: 700; text-decoration: none;"><?php _e('マイページ', 'photo-purchase'); ?></a>
-                <a href="<?php echo esc_url($logout_url); ?>" style="font-size: 13px; color: #ef4444; font-weight: 700; text-decoration: none;"><?php _e('ログアウト', 'photo-purchase'); ?></a>
-            </div>
-        </div>
-        <?php
-    }
+            <?php
+        }
 
     if ($query->have_posts()) {
+        if (!$hide_filters):
         ?>
         <div class="ec-gallery-controls-panel" style="background: #fff; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); margin-bottom: 40px; border: 1px solid #eee;">
             <!-- Search & Actions Row -->
@@ -177,7 +196,17 @@ function photo_purchase_gallery_shortcode($atts)
                 </div>
             </div>
         </div>
+        <?php endif; // End hide_filters check ?>
 
+        <?php 
+        // ユーザーの違和感を解消：特定のID指定時や、フィルタ非表示のピンポイント埋め込み時は見出しを表示しない
+        $show_status_bar = true;
+        if ($hide_filters && !empty($ids)) {
+            $show_status_bar = false;
+        }
+
+        if ($show_status_bar): 
+        ?>
         <div class="ec-gallery-status" style="margin-bottom: 25px; display:flex; align-items:center; gap:10px;">
             <div style="flex:1; height:1px; background:#efefef;"></div>
             <div class="event-title">
@@ -188,16 +217,17 @@ function photo_purchase_gallery_shortcode($atts)
                 } elseif (!empty($event_slug)) {
                     $term = get_term_by('slug', $event_slug, 'photo_event');
                     if ($term) {
-                        echo '<span style="color:#888; font-size:0.9em;">CATEGORY:</span>';
                         echo '<h2 style="margin:5px 0 0; font-size:1.6rem; font-weight:800;">' . esc_html($term->name) . '</h2>';
                     }
-                } else {
+                } elseif (empty($ids)) {
+                    // ID指定がない通常表示の時のみ「すべての商品」を表示
                     echo '<h2 style="margin:0; font-size:1.6rem; font-weight:800;">' . __('すべての商品', 'photo-purchase') . '</h2>';
                 }
                 ?>
             </div>
             <div style="flex:1; height:1px; background:#efefef;"></div>
         </div>
+        <?php endif; ?>
 
         <?php
         $cols = get_option('photo_pp_gallery_columns', '3');
