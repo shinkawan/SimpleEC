@@ -3279,7 +3279,7 @@ function photo_purchase_member_dashboard_shortcode($atts)
                     <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                 </div>
                 <div>
-                    <span style="color:#94a3b8; font-size:12px; font-weight:bold; text-transform:uppercase; letter-spacing:0.05em;"><?php echo is_user_logged_in() ? 'WP Account' : 'Guest Auth'; ?></span><br>
+                    <span style="color:#94a3b8; font-size:12px; font-weight:bold; letter-spacing:0.05em;"><?php echo is_user_logged_in() ? '会員アカウント' : 'ゲスト認証'; ?></span><br>
                     <strong style="font-size:18px; color:#1e293b;"><?php echo esc_html($auth_email); ?></strong>
                 </div>
             </div>
@@ -3356,7 +3356,8 @@ function photo_purchase_member_dashboard_shortcode($atts)
                 <svg viewBox="0 0 24 24" width="24" height="24" stroke="#4f46e5" stroke-width="2" fill="none"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                 会員情報・配送先設定
             </h3>
-            <form action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post">
+            <form action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post" class="h-adr">
+                <span class="p-country-name" style="display:none;">Japan</span>
                 <input type="hidden" name="action" value="photo_purchase_update_profile">
                 <?php wp_nonce_field('photo_purchase_update_profile', 'profile_nonce'); ?>
                 
@@ -3372,12 +3373,12 @@ function photo_purchase_member_dashboard_shortcode($atts)
                     </div>
                     <div>
                         <label style="display:block; font-size:13px; font-weight:600; color:#64748b; margin-bottom:8px;">郵便番号</label>
-                        <input type="text" name="billing_postcode" value="<?php echo esc_attr($u_zip); ?>" placeholder="123-4567" style="width:100%; padding:12px; border-radius:10px; border:1px solid #e2e8f0;">
+                        <input type="text" name="billing_postcode" value="<?php echo esc_attr($u_zip); ?>" placeholder="123-4567" class="p-postal-code" style="width:100%; padding:12px; border-radius:10px; border:1px solid #e2e8f0;">
                     </div>
                 </div>
                 <div style="margin-bottom:20px;">
                     <label style="display:block; font-size:13px; font-weight:600; color:#64748b; margin-bottom:8px;">都道府県</label>
-                    <select name="billing_state" style="width:100%; padding:12px; border-radius:10px; border:1px solid #e2e8f0;">
+                    <select name="billing_state" class="p-region" style="width:100%; padding:12px; border-radius:10px; border:1px solid #e2e8f0;">
                         <option value="">-- 選択してください --</option>
                         <?php
                         $prefectures = ["北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県", "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県", "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県", "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県", "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"];
@@ -3389,7 +3390,7 @@ function photo_purchase_member_dashboard_shortcode($atts)
                 </div>
                 <div style="margin-bottom:24px;">
                     <label style="display:block; font-size:13px; font-weight:600; color:#64748b; margin-bottom:8px;">市区町村・番地・建物名</label>
-                    <textarea name="billing_address_1" rows="2" style="width:100%; padding:12px; border-radius:10px; border:1px solid #e2e8f0;"><?php echo esc_textarea($u_addr); ?></textarea>
+                    <textarea name="billing_address_1" rows="2" class="p-locality p-street-address p-extended-address" style="width:100%; padding:12px; border-radius:10px; border:1px solid #e2e8f0;"><?php echo esc_textarea($u_addr); ?></textarea>
                 </div>
                 
                 <button type="submit" style="background:#4f46e5; color:#fff; border:none; padding:12px 32px; border-radius:10px; font-weight:700; cursor:pointer; font-size:14px; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);">

@@ -356,7 +356,8 @@ function photo_purchase_checkout_shortcode()
 
     echo '<div id="checkout-footer" style="display:none; margin-top:30px; border-top:2px solid #eee; padding-top:30px;">';
     ?>
-    <form id="photo-purchase-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+    <form id="photo-purchase-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="h-adr">
+        <span class="p-country-name" style="display:none;">Japan</span>
         <input type="hidden" name="action" value="photo_purchase_multi_checkout">
         <input type="hidden" name="cart_json" id="cart_json" value="">
         <input type="hidden" name="coupon_info" id="coupon_info" value="">
@@ -440,11 +441,12 @@ function photo_purchase_checkout_shortcode()
                 <p>
                     <label><?php _e('郵便番号', 'photo-purchase'); ?> <span style="color:red;">*</span></label><br>
                     <input type="text" name="shipping_zip" placeholder="123-4567" value="<?php echo esc_attr($u_zip); ?>"
+                        class="p-postal-code"
                         style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;">
                 </p>
                 <p>
                     <label><?php _e('都道府県', 'photo-purchase'); ?> <span style="color:red;">*</span></label><br>
-                    <select name="shipping_pref" id="shipping_pref"
+                    <select name="shipping_pref" id="shipping_pref" class="p-region"
                         style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;">
                         <option value=""><?php _e('-- 選択してください --', 'photo-purchase'); ?></option>
                         <?php
@@ -457,7 +459,7 @@ function photo_purchase_checkout_shortcode()
                 </p>
                 <p>
                     <label><?php _e('市区町村・番地', 'photo-purchase'); ?> <span style="color:red;">*</span></label><br>
-                    <textarea name="shipping_address" rows="2"
+                    <textarea name="shipping_address" rows="2" class="p-locality p-street-address p-extended-address"
                         style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;"><?php echo esc_textarea($u_addr); ?></textarea>
                 </p>
             </div>

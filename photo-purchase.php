@@ -1707,6 +1707,9 @@ function photo_purchase_enqueue_assets()
 	wp_enqueue_style('photo-purchase-fonts', 'https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap', array(), null);
 	
 	wp_enqueue_style('photo-purchase-style', PHOTO_PURCHASE_URL . 'assets/css/style.css', array(), PHOTO_PURCHASE_VERSION);
+
+	// YubinBango for address auto-fill
+	wp_enqueue_script('yubinbango', 'https://yubinbango.github.io/yubinbango/yubinbango.js', array(), null, true);
 }
 add_action('wp_enqueue_scripts', 'photo_purchase_enqueue_assets');
 
