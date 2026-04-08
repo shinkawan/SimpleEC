@@ -1827,12 +1827,3 @@ function photo_purchase_get_active_payment_methods_text($type = 'label')
 	return implode('、', $methods);
 }
 
-/**
- * Register query variable for product deep linking
- */
-add_filter('query_vars', function($vars) {
-    if (!in_array('photo_id', $vars)) {
-        $vars[] = 'photo_id';
-    }
-    return $vars;
-});
