@@ -224,6 +224,39 @@ function photo_purchase_get_dashboard_url() {
 }
 
 /**
+ * Get Gallery Page URL
+ */
+function photo_purchase_get_gallery_url() {
+    static $gallery_url = null;
+    if ($gallery_url !== null) return $gallery_url;
+
+    // 1. 手動設定がある場合はそれを優先
+    $page_id = get_option('photo_gallery_page_id');
+    if ($page_id && get_post($page_id)) {
+        $gallery_url = get_permalink($page_id);
+        return $gallery_url;
+    }
+
+    // 2. ショートコード [ec_gallery] を含むページを高速検索
+    global $wpdb;
+    $post_id = $wpdb->get_var(
+        $wpdb->prepare(
+            "SELECT ID FROM $wpdb->posts WHERE post_content LIKE %s AND post_status = 'publish' AND post_type = 'page' LIMIT 1",
+            '%[ec_gallery]%'
+        )
+    );
+    
+    if ($post_id) {
+        $gallery_url = get_permalink($post_id);
+        update_option('photo_gallery_page_id', $post_id); // 自動保存
+    } else {
+        $gallery_url = home_url('/');
+    }
+    
+    return $gallery_url;
+}
+
+/**
  * Handle Login Redirect (Default WP Login)
  */
 add_filter('login_redirect', 'photo_purchase_login_redirect', 10, 3);

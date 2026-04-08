@@ -40,6 +40,11 @@ function photo_purchase_save_order($order_token, &$order_data)
     global $wpdb;
     $table_name = $wpdb->prefix . 'photo_orders';
 
+    // バリデーション強化: アイテム配列の存在と型をチェック
+    if (empty($order_data['items']) || !is_array($order_data['items'])) {
+        return false;
+    }
+
     $rate_standard = intval(get_option('photo_pp_tax_rate_standard', '10'));
     $rate_reduced = intval(get_option('photo_pp_tax_rate_reduced', '8'));
 
@@ -132,7 +137,9 @@ function photo_purchase_save_order($order_token, &$order_data)
         $item['options_total'] = $options_price;
         $item['final_price'] = $final_unit_price; // Actual price charged per unit
 
-        $items_amount += $final_unit_price * intval($item['qty']);
+        $qty = intval($item['qty'] ?? 1);
+        $items_amount += $final_unit_price * max(1, $qty);
+        $item['qty'] = max(1, $qty); // Ensure it's saved as positive numeric
     }
     unset($item);
 
@@ -332,9 +339,11 @@ function photo_purchase_save_order($order_token, &$order_data)
                 // Product-level stock decrement
                 $manage_stock = get_post_meta($product_id, '_photo_manage_stock', true);
                 if ($manage_stock === '1') {
-                    $current_stock = intval(get_post_meta($product_id, '_photo_stock_qty', true));
-                    $new_stock = max(0, $current_stock - $qty);
-                    update_post_meta($product_id, '_photo_stock_qty', $new_stock);
+                    // アトミックな在庫減少処理（レースコンディション対策）
+                    $wpdb->query($wpdb->prepare(
+                        "UPDATE {$wpdb->postmeta} SET meta_value = CAST(meta_value AS SIGNED) - %d WHERE post_id = %d AND meta_key = '_photo_stock_qty' AND CAST(meta_value AS SIGNED) >= %d",
+                        $qty, $product_id, $qty
+                    ));
                 }
             }
 
@@ -3403,6 +3412,22 @@ function photo_purchase_member_dashboard_shortcode($atts)
             </form>
         </div>
         <?php endif; ?>
+
+
+        <!-- Favorite Products Section -->
+        <div id="ec-favorites-dashboard-wrapper" style="display:none; background:#fff; border:1px solid #e2e8f0; border-radius:24px; padding:32px; margin-bottom:48px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+                <h3 style="margin:0; color:#1e293b; font-size:22px; font-weight:800; display:flex; align-items:center; gap:12px;">
+                    <div style="background:#fff1f2; width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#f43f5e;">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                    </div>
+                    <?php _e('お気に入り商品', 'photo-purchase'); ?>
+                </h3>
+            </div>
+            <div id="ec-favorites-dashboard-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 20px;">
+                <!-- Injected via JS -->
+            </div>
+        </div>
 
         <!-- 注文履歴一覧 -->
         <h3 style="display:flex; align-items:center; gap:12px; color:#1e293b; margin-bottom:24px; font-size:22px; font-weight:800;">

@@ -50,7 +50,7 @@ function photo_purchase_get_cart_details()
 {
     check_ajax_referer('photo_purchase_nonce', 'nonce');
 
-    $cart_items = isset($_POST['cart']) ? $_POST['cart'] : array();
+    $cart_items = (isset($_POST['cart']) && is_array($_POST['cart'])) ? $_POST['cart'] : array();
     $data = array();
 
 	$auth_email = photo_purchase_get_auth_email();
@@ -62,6 +62,12 @@ function photo_purchase_get_cart_details()
 
 		foreach ($cart_items as $item) {
 			$id = intval($item['id']);
+
+			// ポイント3: 商品が存在し、公開されているかチェック
+			if (get_post_status($id) !== 'publish') {
+				continue;
+			}
+
 			$format = sanitize_text_field($item['format']);
 
 			if ($format === 'digital' && $enable_digital !== '1') {
@@ -149,7 +155,7 @@ function photo_purchase_sync_abandoned_cart()
     $email = sanitize_email($_POST['email'] ?? '');
     $cart_json = stripslashes($_POST['cart_json'] ?? '');
 
-    if (empty($email) || empty($cart_json) || $cart_json === '[]') {
+    if (empty($email) || empty($cart_json) || $cart_json === '[]' || json_decode($cart_json) === null) {
         wp_send_json_error('Invalid data');
     }
 
@@ -204,7 +210,7 @@ function photo_purchase_validate_reorder()
 {
     check_ajax_referer('photo_purchase_nonce', 'nonce');
 
-    $items = isset($_POST['items']) ? $_POST['items'] : array();
+    $items = (isset($_POST['items']) && is_array($_POST['items'])) ? $_POST['items'] : array();
     $available_items = array();
     $sold_out_titles = array();
 
@@ -350,49 +356,49 @@ function photo_purchase_checkout_shortcode()
         }
     }
 
-    echo '<div class="photo-checkout-wrap" style="max-width:800px; margin:20px auto; padding:40px; background:#fff; border-radius:15px; box-shadow:0 20px 50px rgba(0,0,0,0.05);">';
+    echo '<div class="photo-checkout-wrap">';
     echo '<h1>' . __('ショッピングカート', 'photo-purchase') . '</h1>';
 
 
-    echo '<div id="checkout-footer" style="display:none; margin-top:30px; border-top:2px solid #eee; padding-top:30px;">';
+    echo '<div id="checkout-footer">';
     ?>
     <form id="photo-purchase-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="h-adr">
-        <span class="p-country-name" style="display:none;">Japan</span>
+        <span class="p-country-name ec-hidden">Japan</span>
         <input type="hidden" name="action" value="photo_purchase_multi_checkout">
         <input type="hidden" name="cart_json" id="cart_json" value="">
         <input type="hidden" name="coupon_info" id="coupon_info" value="">
         <input type="hidden" name="return_url" value="<?php echo esc_url(get_permalink() ?: home_url(add_query_arg(null, null))); ?>">
         <?php wp_nonce_field('photo_purchase_checkout', 'checkout_nonce'); ?>
 
-        <div class="checkout-sections" style="display: grid; grid-template-columns: 1fr; gap: 30px;">
+        <div class="checkout-sections">
             <?php 
             $current_user = wp_get_current_user();
             // Show for guests OR admins (for preview)
             if (!$current_user->exists() || current_user_can('manage_options')): ?>
-                <div class="checkout-login-prompt" style="background: #f8f9fa; border: 1px solid #e9ecef; padding: 25px; border-radius: 12px; margin-bottom: 30px; text-align: center;">
-                    <h3 style="margin-top: 0; font-size: 1.1rem; color: #333;"><?php _e('会員の方はログインして購入', 'photo-purchase'); ?></h3>
+                <div class="checkout-login-prompt">
+                    <h3><?php _e('会員の方はログインして購入', 'photo-purchase'); ?></h3>
                     <?php if (current_user_can('manage_options') && $current_user->exists()): ?>
-                        <p style="background:#fff3cd; color:#856404; padding:8px; border-radius:6px; font-size:12px; margin-bottom:15px; border:1px solid #ffeeba;">
+                        <p class="ec-admin-preview-msg">
                             <?php _e('【管理者プレビュー】ログイン中ですが、確認用に表示しています。', 'photo-purchase'); ?>
                         </p>
                     <?php endif; ?>
                     <?php echo photo_purchase_render_sns_login_buttons(); ?>
                     
-                    <div id="photo-otp-login-area" style="margin-top:20px; border-top: 1px dashed #ccc; padding-top: 20px;">
-                        <p style="font-size: 0.9rem; color: #666; margin-bottom:15px;"><?php _e('メールアドレスで認証（過去にご利用のある方向け）', 'photo-purchase'); ?></p>
+                    <div id="photo-otp-login-area">
+                        <p class="ec-text-muted"><?php _e('メールアドレスで認証（過去にご利用のある方向け）', 'photo-purchase'); ?></p>
                         
                         <div id="photo-otp-step-1">
-                            <input type="email" id="photo-otp-email" placeholder="<?php _e('メールアドレス', 'photo-purchase'); ?>" style="width: 100%; max-width: 300px; padding: 10px; border-radius: 6px; border: 1px solid #ddd; margin-bottom: 10px;">
+                            <input type="email" id="photo-otp-email" placeholder="<?php _e('メールアドレス', 'photo-purchase'); ?>" class="ec-otp-email-input">
                             <br>
-                            <button type="button" id="photo-otp-send-btn" class="button button-secondary" style="padding: 8px 20px; border-radius: 20px;"><?php _e('認証コードを送信', 'photo-purchase'); ?></button>
+                            <button type="button" id="photo-otp-send-btn" class="button button-secondary ec-otp-send-btn"><?php _e('認証コードを送信', 'photo-purchase'); ?></button>
                             <div id="photo-otp-msg-1" style="color: red; font-size: 13px; margin-top: 10px; display:none;"></div>
                         </div>
 
                         <div id="photo-otp-step-2" style="display:none;">
                             <p style="font-size:13px; color:#333; margin-bottom:10px;"><?php _e('メール宛に届いた6桁のコードを入力してください', 'photo-purchase'); ?></p>
-                            <input type="text" id="photo-otp-code" placeholder="123456" maxlength="6" style="width: 100%; max-width: 150px; padding: 10px; border-radius: 6px; border: 1px solid #ddd; margin-bottom: 10px; text-align:center; font-size: 1.2rem; letter-spacing: 5px;">
+                            <input type="text" id="photo-otp-code" placeholder="123456" maxlength="6" class="ec-otp-code-input">
                             <br>
-                            <button type="button" id="photo-otp-verify-btn" class="button button-primary" style="padding: 8px 30px; border-radius: 20px;"><?php _e('ログイン', 'photo-purchase'); ?></button>
+                            <button type="button" id="photo-otp-verify-btn" class="button button-primary ec-otp-verify-btn"><?php _e('ログイン', 'photo-purchase'); ?></button>
                             <div id="photo-otp-msg-2" style="color: red; font-size: 13px; margin-top: 10px; display:none;"></div>
                         </div>
 
@@ -416,38 +422,32 @@ function photo_purchase_checkout_shortcode()
                 <h3><?php _e('お客様情報', 'photo-purchase'); ?></h3>
                 <p>
                     <label><?php _e('お名前', 'photo-purchase'); ?> <span style="color:red;">*</span></label><br>
-                    <input type="text" name="buyer_name" required value="<?php echo esc_attr($u_name); ?>"
-                        style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;">
+                    <input type="text" name="buyer_name" required value="<?php echo esc_attr($u_name); ?>" class="ec-form-input">
                 </p>
                 <p>
                     <label><?php _e('メールアドレス', 'photo-purchase'); ?> <span style="color:red;">*</span></label><br>
-                    <input type="email" name="buyer_email" required value="<?php echo esc_attr($u_email); ?>"
-                        style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;">
+                    <input type="email" name="buyer_email" required value="<?php echo esc_attr($u_email); ?>" class="ec-form-input">
                 </p>
                 <p>
                     <label><?php _e('電話番号', 'photo-purchase'); ?></label><br>
-                    <input type="tel" name="buyer_phone" value="<?php echo esc_attr($u_phone); ?>"
-                        style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;">
+                    <input type="tel" name="buyer_phone" value="<?php echo esc_attr($u_phone); ?>" class="ec-form-input">
                 </p>
                 <p>
                     <label><?php _e('備考欄 (配送の希望、ギフトメッセージ等)', 'photo-purchase'); ?></label><br>
-                    <textarea name="photo_order_notes" rows="3" placeholder="<?php _e('例：配達前に電話をください、ギフト用ラッピング希望等', 'photo-purchase'); ?>"
-                        style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;"></textarea>
+                    <textarea name="photo_order_notes" rows="3" placeholder="<?php _e('例：配達前に電話をください、ギフト用ラッピング希望等', 'photo-purchase'); ?>" class="ec-form-input"></textarea>
                 </p>
             </div>
 
-            <div id="shipping-info" style="display:none;">
+            <div id="shipping-info">
                 <h3><?php _e('お届け先情報', 'photo-purchase'); ?></h3>
                 <p>
                     <label><?php _e('郵便番号', 'photo-purchase'); ?> <span style="color:red;">*</span></label><br>
                     <input type="text" name="shipping_zip" placeholder="123-4567" value="<?php echo esc_attr($u_zip); ?>"
-                        class="p-postal-code"
-                        style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;">
+                        class="p-postal-code ec-form-input">
                 </p>
                 <p>
                     <label><?php _e('都道府県', 'photo-purchase'); ?> <span style="color:red;">*</span></label><br>
-                    <select name="shipping_pref" id="shipping_pref" class="p-region"
-                        style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;">
+                    <select name="shipping_pref" id="shipping_pref" class="p-region ec-form-input">
                         <option value=""><?php _e('-- 選択してください --', 'photo-purchase'); ?></option>
                         <?php
                         $prefectures = ["北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県", "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県", "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県", "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県", "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"];
@@ -459,15 +459,13 @@ function photo_purchase_checkout_shortcode()
                 </p>
                 <p>
                     <label><?php _e('市区町村・番地', 'photo-purchase'); ?> <span style="color:red;">*</span></label><br>
-                    <textarea name="shipping_address" rows="2" class="p-locality p-street-address p-extended-address"
-                        style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;"><?php echo esc_textarea($u_addr); ?></textarea>
+                    <textarea name="shipping_address" rows="2" class="p-locality p-street-address p-extended-address ec-form-input"><?php echo esc_textarea($u_addr); ?></textarea>
                 </p>
             </div>
 
-            <div class="payment-method"
-                style="border: 2px solid #f0f0f0; padding: 20px; border-radius: 12px; height: fit-content;">
-                <h3 style="margin-top:0;"><?php _e('お支払い方法', 'photo-purchase'); ?></h3>
-                <p style="display: flex; flex-direction: column; gap: 10px;">
+            <div class="payment-method ec-payment-method-box">
+                <h3 class="ec-mt-0"><?php _e('お支払い方法', 'photo-purchase'); ?></h3>
+                <p class="ec-payment-list">
                     <?php
                     $enable_stripe = get_option('photo_pp_enable_stripe', '1');
                     $enable_bank = get_option('photo_pp_enable_bank', '1');
@@ -476,14 +474,14 @@ function photo_purchase_checkout_shortcode()
                     $methods_found = false;
 
                     if ($enable_stripe === '1'): $methods_found = true; ?>
-                        <label style="cursor: pointer;">
+                        <label class="ec-clickable">
                             <input type="radio" name="payment_method" value="stripe" checked>
                             <?php _e('クレジットカード (Stripe)', 'photo-purchase'); ?>
                         </label>
                     <?php endif;
 
                     if (get_option('photo_pp_enable_paypay', '0') === '1'): ?>
-                        <label style="cursor: pointer;">
+                        <label class="ec-clickable">
                             <input type="radio" name="payment_method" value="paypay" <?php checked(!$methods_found); ?>>
                             <?php $methods_found = true; ?>
                             <?php _e('PayPay', 'photo-purchase'); ?>
@@ -499,7 +497,7 @@ function photo_purchase_checkout_shortcode()
                     <?php endif;
 
                     if ($enable_cod === '1'): ?>
-                        <label style="cursor: pointer;">
+                        <label class="ec-clickable">
                             <input type="radio" name="payment_method" value="cod" <?php echo (!$methods_found) ? 'checked' : ''; ?>>
                             <?php $methods_found = true; ?>
                             <?php _e('代金引換', 'photo-purchase'); ?>
@@ -507,7 +505,7 @@ function photo_purchase_checkout_shortcode()
                     <?php endif;
 
                     if (!$methods_found) {
-                        echo '<span style="color:red;">' . __('現在利用可能な決済方法がありません。', 'photo-purchase') . '</span>';
+                        echo '<span class="ec-text-danger">' . __('現在利用可能な決済方法がありません。', 'photo-purchase') . '</span>';
                     }
                     ?>
                 </p>
@@ -515,24 +513,21 @@ function photo_purchase_checkout_shortcode()
             </div>
         </div>
 
-        <div id="photo-checkout-items" data-cart-details="1" style="min-height:100px; margin-top:30px; border-top:1px solid #eee; padding-top:20px;">
+        <div id="photo-checkout-items" data-cart-details="1" class="ec-checkout-items-area">
             <?php _e('カートを読み込んでいます...', 'photo-purchase'); ?>
         </div>
 
-        <div style="margin-top: 30px; text-align: right;">
-            <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
-                <?php printf(__('「注文を確定する」をクリックすることで、%sに同意したものとみなされます。', 'photo-purchase'), '<a href="' . esc_url(home_url('/membership-terms/')) . '" target="_blank" style="color: #0073aa; text-decoration: underline;">' . __('会員規約', 'photo-purchase') . '</a>'); ?>
+        <div class="ec-mt-30 ec-text-right">
+            <p class="ec-terms-agreement-text">
+                <?php printf(__('「注文を確定する」をクリックすることで、%sに同意したものとみなされます。', 'photo-purchase'), '<a href="' . esc_url(home_url('/membership-terms/')) . '" target="_blank" class="ec-link-underlined">' . __('会員規約', 'photo-purchase') . '</a>'); ?>
             </p>
         </div>
 
-        <div
-            style="text-align:right; display: flex; justify-content: flex-end; gap: 10px; align-items: center; margin-top: 10px;">
-            <button type="button" class="clear-cart-btn button"
-                style="background: #f8f9fa; color: #666; border: 1px solid #ddd; padding: 10px 20px; border-radius: 30px;">
+        <div class="ec-submit-section">
+            <button type="button" class="clear-cart-btn button ec-btn-clear-cart">
                 <?php _e('カートを空にする', 'photo-purchase'); ?>
             </button>
-            <button type="submit" class="button button-primary"
-                style="padding: 15px 40px; font-size:1.2rem; border-radius:30px; background:#0073aa; color:#fff; cursor:pointer;">
+            <button type="submit" class="button button-primary ec-btn-submit-order">
                 <?php _e('注文を確定する', 'photo-purchase'); ?>
             </button>
         </div>
@@ -567,10 +562,10 @@ function photo_purchase_checkout_shortcode()
 
             var formData = new FormData();
             formData.append('action', 'photo_send_otp');
-            formData.append('nonce', typeof photoPurchase !== 'undefined' ? photoPurchase.nonce : '');
+            formData.append('nonce', typeof photoPurchase !== 'undefined' ? photoPurchase.nonce : '<?php echo wp_create_nonce("photo_purchase_nonce"); ?>');
             formData.append('email', email);
 
-            fetch(typeof photoPurchase !== 'undefined' ? photoPurchase.ajax_url : '', {
+            fetch(typeof photoPurchase !== 'undefined' ? photoPurchase.ajax_url : '<?php echo esc_url(admin_url("admin-ajax.php")); ?>', {
                 method: 'POST',
                 body: formData
             })
@@ -613,11 +608,11 @@ function photo_purchase_checkout_shortcode()
 
             var formData = new FormData();
             formData.append('action', 'photo_verify_otp');
-            formData.append('nonce', typeof photoPurchase !== 'undefined' ? photoPurchase.nonce : '');
+            formData.append('nonce', typeof photoPurchase !== 'undefined' ? photoPurchase.nonce : '<?php echo wp_create_nonce("photo_purchase_nonce"); ?>');
             formData.append('email', email);
             formData.append('code', code);
 
-            fetch(typeof photoPurchase !== 'undefined' ? photoPurchase.ajax_url : '', {
+            fetch(typeof photoPurchase !== 'undefined' ? photoPurchase.ajax_url : '<?php echo esc_url(admin_url("admin-ajax.php")); ?>', {
                 method: 'POST',
                 body: formData
             })
@@ -641,6 +636,18 @@ function photo_purchase_checkout_shortcode()
                 msg2.textContent = '<?php _e("通信エラーが発生しました。", "photo-purchase"); ?>';
             });
         });
+
+        // 注文確定ボタンの連打防止
+        var orderForm = document.getElementById('photo-purchase-order-form');
+        if (orderForm) {
+            orderForm.addEventListener('submit', function() {
+                var submitBtn = orderForm.querySelector('.ec-btn-submit-order');
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.innerHTML = '<?php _e("処理中...", "photo-purchase"); ?>';
+                }
+            });
+        }
     });
     </script>
     <?php
@@ -683,3 +690,55 @@ function photo_purchase_cart_drawer_html()
     <?php
 }
 add_action('wp_footer', 'photo_purchase_cart_drawer_html');
+
+/**
+ * AJAX: Get Favorite Product Details
+ */
+function photo_purchase_get_favorite_details()
+{
+    check_ajax_referer('photo_purchase_nonce', 'nonce');
+
+    $ids = isset($_POST['product_ids']) ? array_map('intval', $_POST['product_ids']) : array();
+    $data = array();
+
+    if (!empty($ids)) {
+        foreach ($ids as $id) {
+            $post = get_post($id);
+            if (!$post || $post->post_type !== 'photo_product' || $post->post_status !== 'publish') {
+                continue;
+            }
+
+            $prices = array();
+            $p_digital = get_post_meta($id, '_photo_price_digital', true);
+            if (!$p_digital) $p_digital = get_post_meta($id, '_photo_price', true);
+            $p_l = get_post_meta($id, '_photo_price_l', true);
+            $p_sub = get_post_meta($id, '_photo_price_subscription', true);
+
+            if ($p_digital > 0) $prices[] = intval($p_digital);
+            if ($p_l > 0) $prices[] = intval($p_l);
+            if ($p_sub > 0) $prices[] = intval($p_sub);
+
+            // Member Discount check
+            $auth_email = photo_purchase_get_auth_email();
+            $discount_rate = intval(get_option('photo_pp_member_discount_rate', '0'));
+            $apply_discount = (!empty($auth_email) && $discount_rate > 0);
+
+            $min_price = !empty($prices) ? min($prices) : 0;
+            if ($apply_discount && $min_price > 0) {
+                $min_price = floor($min_price * (1 - ($discount_rate / 100)));
+            }
+
+            $data[] = array(
+                'id' => $id,
+                'title' => get_the_title($id),
+                'price_display' => '¥' . number_format($min_price),
+                'thumbnail' => get_the_post_thumbnail_url($id, 'medium') ?: PHOTO_PURCHASE_URL . 'assets/images/no-image.png',
+                'permalink' => add_query_arg('photo_id', $id, photo_purchase_get_gallery_url())
+            );
+        }
+    }
+
+    wp_send_json_success($data);
+}
+add_action('wp_ajax_photo_purchase_get_favorite_details', 'photo_purchase_get_favorite_details');
+add_action('wp_ajax_nopriv_photo_purchase_get_favorite_details', 'photo_purchase_get_favorite_details');

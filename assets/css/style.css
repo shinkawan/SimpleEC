@@ -864,4 +864,223 @@ body.admin-bar .photo-cart-indicator {
 .member-status-banner svg {
     filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
 }
-
+
+/* Favorites Dashboard Section (v4.2.x) */
+#ec-favorites-dashboard-wrapper {
+	animation: pp-fav-appear 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fav-product-card {
+	transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fav-product-card:hover {
+	transform: translateY(-6px);
+	box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+	border-color: #f43f5e !important;
+}
+
+.fav-product-card .fav-btn {
+	transition: all 0.2s ease;
+}
+
+.fav-product-card .fav-btn:hover {
+	transform: scale(1.15) !important;
+	background: #fff !important;
+	box-shadow: 0 4px 12px rgba(244, 63, 94, 0.2) !important;
+}
+
+@keyframes pp-fav-appear {
+	from { opacity: 0; transform: translateY(20px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 600px) {
+	#ec-favorites-dashboard-list {
+		grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
+		gap: 12px !important;
+	}
+	#ec-favorites-dashboard-wrapper {
+		padding: 24px 16px !important;
+	}
+}
+
+/* --- Checkout Page Styles (v4.2.x) --- */
+.photo-checkout-wrap {
+    max-width: 800px;
+    margin: 20px auto;
+    padding: 40px;
+    background: #fff;
+    border-radius: 15px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.05);
+}
+
+#checkout-footer {
+    display: none;
+    margin-top: 30px;
+    border-top: 2px solid #eee;
+    padding-top: 30px;
+}
+
+.checkout-sections {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 30px;
+}
+
+.checkout-login-prompt {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    padding: 25px;
+    border-radius: 12px;
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+.checkout-login-prompt h3 {
+    margin-top: 0;
+    font-size: 1.1rem;
+    color: #333;
+}
+
+.ec-admin-preview-msg {
+    background: #fff3cd;
+    color: #856404;
+    padding: 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    margin-bottom: 15px;
+    border: 1px solid #ffeeba;
+}
+
+#photo-otp-login-area {
+    margin-top: 20px;
+    border-top: 1px dashed #ccc;
+    padding-top: 20px;
+}
+
+.ec-otp-email-input {
+    width: 100%;
+    max-width: 300px;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+    margin-bottom: 10px;
+}
+
+.ec-otp-code-input {
+    width: 100%;
+    max-width: 150px;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+    margin-bottom: 10px;
+    text-align: center;
+    font-size: 1.2rem;
+    letter-spacing: 5px;
+}
+
+.ec-otp-verify-btn {
+    padding: 8px 30px;
+    border-radius: 20px;
+}
+
+.ec-otp-send-btn {
+    padding: 8px 20px;
+    border-radius: 20px;
+}
+
+.ec-form-input, 
+.buyer-info input,
+.buyer-info textarea,
+.shipping-info input,
+.shipping-info select {
+    width: 100%;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    transition: border-color 0.2s;
+}
+
+.ec-form-input:focus {
+    border-color: var(--pp-primary);
+    outline: none;
+}
+
+.ec-required-star {
+    color: red;
+}
+
+#shipping-info {
+    animation: pp-fav-appear 0.4s ease-out;
+}
+
+@media (max-width: 600px) {
+    .photo-checkout-wrap {
+        padding: 24px 16px;
+        margin: 10px;
+    }
+}
+
+/* Utilities */
+.ec-hidden { display: none; }
+.ec-mt-0 { margin-top: 0; }
+.ec-text-muted { color: #666; font-size: 0.9rem; }
+.ec-clickable { cursor: pointer; }
+
+/* Payment Section */
+.ec-payment-method-box {
+    border: 2px solid #f0f0f0;
+    padding: 20px;
+    border-radius: 12px;
+    height: fit-content;
+}
+
+.ec-payment-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.ec-checkout-items-area {
+    min-height: 100px;
+    margin-top: 30px;
+    border-top: 1px solid #eee;
+    padding-top: 20px;
+}
+
+.ec-terms-agreement-text {
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 10px;
+}
+
+.ec-submit-section {
+    text-align: right;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    align-items: center;
+    margin-top: 10px;
+}
+
+.ec-btn-clear-cart {
+    background: #f8f9fa;
+    color: #666;
+    border: 1px solid #ddd;
+    padding: 10px 20px;
+    border-radius: 30px;
+    transition: all 0.2s;
+}
+
+.ec-btn-clear-cart:hover {
+    background: #e9ecef;
+}
+
+.ec-btn-submit-order {
+    padding: 15px 40px;
+    font-size: 1.2rem;
+    border-radius: 30px;
+    cursor: pointer;
+}
+

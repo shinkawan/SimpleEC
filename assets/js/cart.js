@@ -1,5 +1,16 @@
 jQuery(document).ready(function ($) {
 
+    // --- エスケープ用ユーティリティ関数（XSS対策） ---
+    function escapeHtml(text) {
+        if (text === undefined || text === null) return '';
+        return text.toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
     // --- ユーティリティ: リップルエフェクト ---
     $(document).on('click', '.button, .add-to-cart-btn, .fav-btn', function (e) {
         var $el = $(this);
@@ -63,6 +74,7 @@ jQuery(document).ready(function ($) {
         }
         
         renderDrawer();
+        renderFavDashboard();
     }
 
     // --- ドロワー（サイドバー）機能 ---
@@ -112,8 +124,8 @@ jQuery(document).ready(function ($) {
                         if (cartItem.options && cartItem.options.length > 0) {
                             cartItem.options.forEach(function(opt) {
                                 extraPrice += (parseInt(opt.price, 10) || 0);
-                                var gLabel = (opt.group && !['項目', 'オプション'].includes(opt.group)) ? opt.group + ': ' : '+ ';
-                                optLabels += '<span style="color:var(--pp-accent); font-size:0.75rem; display:block;">' + gLabel + opt.name + '</span>';
+                                var gLabel = (opt.group && !['項目', 'オプション'].includes(opt.group)) ? escapeHtml(opt.group) + ': ' : '+ ';
+                                optLabels += '<span style="color:var(--pp-accent); font-size:0.75rem; display:block;">' + gLabel + escapeHtml(opt.name) + '</span>';
                             });
                         }
 
@@ -125,10 +137,10 @@ jQuery(document).ready(function ($) {
                         html += '<div class="ec-drawer-item">';
                         html += '<div class="ec-drawer-item-thumb-wrap">' + itemDetails.thumb + '</div>';
                         html += '<div class="ec-drawer-item-info">';
-                        html += '<span class="ec-drawer-item-title">' + itemDetails.title + '</span>';
+                        html += '<span class="ec-drawer-item-title">' + escapeHtml(itemDetails.title) + '</span>';
                         html += optLabels;
-                        var varLabel = cartItem.variation_name ? '<span style="color:var(--pp-accent); font-size:0.75rem; display:block;">' + cartItem.variation_name + '</span>' : '';
-                        html += '<div class="ec-drawer-item-meta">' + varLabel + formatLabel + ' x ' + cartItem.qty + '</div>';
+                        var varLabel = cartItem.variation_name ? '<span style="color:var(--pp-accent); font-size:0.75rem; display:block;">' + escapeHtml(cartItem.variation_name) + '</span>' : '';
+                        html += '<div class="ec-drawer-item-meta">' + varLabel + escapeHtml(formatLabel) + ' x ' + cartItem.qty + '</div>';
                         var priceHtml = '¥' + subtotal.toLocaleString();
                         if (itemPrice < itemDetails.original_price) {
                             priceHtml += ' <span class="ec-member-discount-badge" style="font-size:10px; background:#ff4d4d; color:#fff; padding:2px 4px; border-radius:3px; margin-left:5px; vertical-align:middle;">会員割引</span>';
@@ -155,6 +167,69 @@ jQuery(document).ready(function ($) {
     function saveFavs(favs) {
         localStorage.setItem('photo_favorites', JSON.stringify(favs));
         updateFavUI();
+        renderFavDashboard();
+    }
+
+    function renderFavDashboard() {
+        var $wrapper = $('#ec-favorites-dashboard-wrapper');
+        var $list = $('#ec-favorites-dashboard-list');
+        if (!$wrapper.length) return;
+
+        var favIds = getFavs();
+        if (favIds.length === 0) {
+            $wrapper.fadeOut();
+            return;
+        }
+
+        $wrapper.show();
+        
+        // Only show loader if empty
+        if ($list.is(':empty')) {
+            $list.html('<div style="grid-column: 1/-1; text-align:center; padding:40px; color:#94a3b8;">読み込み中...</div>');
+        }
+
+        $.ajax({
+            url: photoPurchase.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'photo_purchase_get_favorite_details',
+                product_ids: favIds,
+                nonce: photoPurchase.nonce
+            },
+            success: function(response) {
+                if (response.success && response.data.length > 0) {
+                    var html = '';
+                    response.data.forEach(function(item) {
+                        html += `
+                            <div class="fav-product-card" style="position:relative; background:#f8fafc; border:1px solid #e2e8f0; border-radius:16px; overflow:hidden; transition:all 0.2s;">
+                                <a href="${escapeHtml(item.permalink)}" style="text-decoration:none; color:inherit; display:block;">
+                                    <div style="aspect-ratio:1; overflow:hidden; background:#eee;">
+                                        <img src="${escapeHtml(item.thumbnail)}" style="width:100%; height:100%; object-fit:cover;">
+                                    </div>
+                                    <div style="padding:12px;">
+                                        <div style="font-size:13px; font-weight:bold; color:#1e293b; margin-bottom:4px; display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden;">
+                                            ${escapeHtml(item.title)}
+                                        </div>
+                                        <div style="font-size:14px; font-800; color:#4f46e5;">
+                                            ${escapeHtml(item.price_display)}
+                                        </div>
+                                    </div>
+                                </a>
+                                <button class="fav-btn is-fav" data-id="${item.id}" style="position:absolute; top:8px; right:8px; background:rgba(255,255,255,0.9); border:none; width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.1); z-index:10;">
+                                    <svg viewBox="0 0 24 24" width="18" height="18" fill="#f43f5e"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                                </button>
+                            </div>
+                        `;
+                    });
+                    $list.html(html);
+                } else {
+                    $wrapper.fadeOut();
+                }
+            },
+            error: function() {
+                $list.html('<div style="grid-column: 1/-1; text-align:center; padding:20px; color:#ef4444;">エラーが発生しました</div>');
+            }
+        });
     }
 
     function updateFavUI() {
@@ -854,18 +929,27 @@ jQuery(document).ready(function ($) {
         var hasSub = cart.some(c => c.format === 'subscription');
         if (format === 'subscription' && cart.length > 0 && !hasSub) { alert('サブスク商品と通常商品は同時購入できません。'); return; }
 
-        cart.push({ 
-            id: photoId, 
-            format: format, 
-            qty: qty, 
-            options: selectedOpts, 
-            variation_id: variationId,
-            variation_name: variationName,
-            sub_requires_shipping: subReq == '1' 
-        });
-        saveCart(cart);
-        $('#photo-lightbox').removeClass('is-active');
-        openDrawer();
+        var $btn = $(this);
+        var oldHtml = $btn.html();
+        $btn.prop('disabled', true).html('追加中...');
+
+        setTimeout(function() {
+            cart.push({ 
+                id: photoId, 
+                format: format, 
+                qty: qty, 
+                options: selectedOpts, 
+                variation_id: variationId,
+                variation_name: variationName,
+                sub_requires_shipping: subReq == '1' 
+            });
+            saveCart(cart);
+            $('#photo-lightbox').removeClass('is-active');
+            openDrawer();
+            
+            // ボタンを戻す（モーダルが閉じるので実質見えないが、再開時のために）
+            $btn.prop('disabled', false).html(oldHtml);
+        }, 300);
     });
 
     // --- クーポン適用 ---
@@ -938,11 +1022,21 @@ jQuery(document).ready(function ($) {
                         $btn.html('✅ ' + addedCount + ' 個商品を追加').css('background', '#dcfce7');
                         openDrawer();
                     }
-                    if (response.data.sold_out_titles.length > 0) {
+
+                    if (response.data.sold_out_titles && response.data.sold_out_titles.length > 0) {
                         alert('一部商品は売り切れのため追加できませんでした。');
                     }
-                    setTimeout(function() { $btn.html(oldHtml).css('background', '').prop('disabled', false); }, 3000);
+                } else {
+                    alert(response.data.message || '商品の検証中にエラーが発生しました。');
                 }
+            },
+            error: function() {
+                alert('通信エラーが発生しました。時間を置いて再度お試しください。');
+            },
+            complete: function() {
+                setTimeout(function() { 
+                    $btn.html(oldHtml).css('background', '').prop('disabled', false); 
+                }, 3000);
             }
         });
     });
