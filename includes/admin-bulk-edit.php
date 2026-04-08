@@ -53,7 +53,7 @@ function photo_purchase_handle_export_products_csv()
     check_admin_referer('photo_purchase_bulk_export');
 
     header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="products_export_' . date('Ymd_His') . '.csv"');
+    header('Content-Disposition: inline; filename="products_export_' . date('Ymd_His') . '.csv"');
 
     $output = fopen('php://output', 'w');
     // Add BOM for Excel

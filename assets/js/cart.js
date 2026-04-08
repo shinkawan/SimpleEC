@@ -59,23 +59,149 @@ jQuery(document).ready(function ($) {
         $(document).trigger('cart_updated');
     }
 
+    function updateCartCount(count) {
+        $('.cart-count').text(count);
+    }
+
+    /**
+     * カート詳細の取得と不整合データの自動削除
+     */
     function updateCartUI() {
         var cart = getCart();
+        
+        // カートバッジ更新
         var totalCount = cart.reduce((acc, item) => acc + (parseInt(item.qty, 10) || 0), 0);
-        $('.cart-count').text(totalCount);
+        updateCartCount(totalCount);
 
+        // 商品一覧の「カート投入済み」クラス更新
         $('.photo-item').removeClass('is-in-cart');
         cart.forEach(function (item) {
             $('.photo-item[data-id="' + item.id + '"]').addClass('is-in-cart');
         });
 
-        if ($('#photo-checkout-items').length) {
-            renderCheckout();
+        // お気に入りダッシュボードは常に実行（カートが空でも表示が必要）
+        if (typeof renderFavDashboard === 'function') renderFavDashboard();
+
+        // カートが空の場合は早期リターン
+        if (cart.length === 0) {
+            renderDrawer([]);
+            if ($('#photo-checkout-items').length) renderCheckout([]);
+            return;
         }
-        
-        renderDrawer();
-        renderFavDashboard();
+
+        // サーバーから最新の詳細情報を取得
+        $.ajax({
+            url: photoPurchase.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'photo_get_cart_details',
+                nonce: photoPurchase.nonce,
+                cart: cart
+            },
+            success: function(response) {
+                if (response.success) {
+                    var serverItems = response.data;
+                    
+                    // --- 追加: 自動クリーンアップロジック ---
+                    var validKeys = serverItems.map(function(item) { 
+                        return item.id + '-' + item.format + '-' + (item.variation_id || ''); 
+                    });
+                    
+                    var cleanedCart = cart.filter(function(localItem) {
+                        var localKey = localItem.id + '-' + localItem.format + '-' + (localItem.variation_id || '');
+                        return validKeys.indexOf(localKey) !== -1;
+                    });
+
+                    if (cleanedCart.length !== cart.length) {
+                        console.warn('Simple EC: 削除された商品をカートから自動除去しました。');
+                        saveCart(cleanedCart);
+                        return;
+                    }
+                    // --------------------------------------
+
+                    renderDrawer(serverItems);
+                    if ($('#photo-checkout-items').length) {
+                        renderCheckout(serverItems);
+                    }
+                    
+                    updateCartCount(cleanedCart.reduce((acc, item) => acc + (parseInt(item.qty, 10) || 0), 0));
+                }
+            }
+        });
+
+
     }
+
+    // --- お気に入り表示の同期 ---
+    function updateFavUI() {
+        var favs = getFavs();
+        $('.fav-btn').each(function() {
+            var id = $(this).data('id');
+            // includes の代わりに indexOf を使用（互換性）
+            if (favs.indexOf(id) !== -1) {
+                $(this).addClass('is-favorited').addClass('is-fav');
+            } else {
+                $(this).removeClass('is-favorited').removeClass('is-fav');
+            }
+        });
+    }
+
+    function renderFavDashboard() {
+        // 優先順位をつけてコンテナを特定
+        var $container = $('#ec-member-fav-list').length ? $('#ec-member-fav-list') : $('#ec-favorites-dashboard-list');
+        if (!$container.length) $container = $('#ec-favorites-dashboard-wrapper #ec-favorites-dashboard-list');
+        
+        if (!$container.length) return;
+        $container.show();
+        $('#ec-favorites-dashboard-wrapper').show();
+        
+        var favs = getFavs();
+        if (favs.length === 0) {
+            $container.html('<p style="text-align:center; padding:40px; color:#94a3b8;">お気に入りに登録されている商品はありません。</p>');
+            $('#ec-favorites-dashboard-wrapper').show();
+            return;
+        }
+
+        // 読み込み中表示
+        if ($container.is(':empty')) {
+            $container.html('<div style="text-align:center; padding:40px; color:#94a3b8;">読み込み中...</div>');
+        }
+
+        $.ajax({
+            url: photoPurchase.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'photo_get_fav_details',
+                favs: favs,
+                nonce: photoPurchase.nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    var html = '';
+                    response.data.forEach(function(item) {
+                        html += `
+                            <div class="ec-fav-item fav-product-card" style="background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1); border:1px solid #e2e8f0; position:relative; transition:all 0.2s;">
+                                <div class="ec-fav-thumb" style="aspect-ratio:1/1; overflow:hidden;">
+                                    <a href="${escapeHtml(item.url)}">${item.thumb}</a>
+                                </div>
+                                <div style="padding:15px;">
+                                    <h4 style="margin:0 0 6px; font-size:0.9rem; font-weight:bold; color:#1e293b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(item.title)}</h4>
+                                    <div style="font-size:14px; font-weight:800; color:#4f46e5; margin-bottom:10px;">${escapeHtml(item.price_display)}</div>
+                                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                                        <a href="${escapeHtml(item.url)}" class="button" style="padding:6px 12px; font-size:0.8rem;">詳細を見る</a>
+                                        <button class="fav-btn is-favorited is-fav" data-id="${item.id}" style="background:rgba(255,255,255,0.9); border:none; width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.1); z-index:10;">
+                                            <svg width="20" height="20" fill="#f43f5e" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>`;
+                    });
+                    $container.html(html);
+                }
+            }
+        });
+    }
+
 
     // --- ドロワー（サイドバー）機能 ---
     function openDrawer() {
@@ -90,7 +216,7 @@ jQuery(document).ready(function ($) {
 
     $('#ec-drawer-close, #ec-cart-overlay').on('click', closeDrawer);
 
-    function renderDrawer() {
+    function renderDrawer(serverItems) {
         var cart = getCart();
         var $itemsContainer = $('#ec-drawer-items');
         var $totalAmount = $('#ec-drawer-total-amount');
@@ -101,61 +227,54 @@ jQuery(document).ready(function ($) {
             return;
         }
 
-        $.ajax({
-            url: photoPurchase.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'photo_get_cart_details',
-                cart: cart,
-                nonce: photoPurchase.nonce
-            },
-            success: function (response) {
-                if (response.success) {
-                    var html = '';
-                    var total = 0;
+        // 引数がない場合は updateCartUI 経由での再実行を待つ
+        if (!serverItems) {
+            updateCartUI();
+            return;
+        }
 
-                    cart.forEach(function(cartItem, index) {
-                        var itemDetails = response.data.find(d => d.id == cartItem.id && d.format == cartItem.format && (d.variation_id || '') == (cartItem.variation_id || ''));
-                        if (!itemDetails) return;
+        var html = '';
+        var total = 0;
 
-                        var itemPrice = parseInt(itemDetails.price, 10) || 0;
-                        var extraPrice = 0;
-                        var optLabels = '';
-                        if (cartItem.options && cartItem.options.length > 0) {
-                            cartItem.options.forEach(function(opt) {
-                                extraPrice += (parseInt(opt.price, 10) || 0);
-                                var gLabel = (opt.group && !['項目', 'オプション'].includes(opt.group)) ? escapeHtml(opt.group) + ': ' : '+ ';
-                                optLabels += '<span style="color:var(--pp-accent); font-size:0.75rem; display:block;">' + gLabel + escapeHtml(opt.name) + '</span>';
-                            });
-                        }
+        cart.forEach(function(cartItem, index) {
+            var itemDetails = serverItems.find(d => d.id == cartItem.id && d.format == cartItem.format && (d.variation_id || '') == (cartItem.variation_id || ''));
+            if (!itemDetails) return;
 
-                        var subtotal = (itemPrice + extraPrice) * (parseInt(cartItem.qty, 10) || 1);
-                        total += subtotal;
-
-                        var formatLabel = photoPurchase.labels[cartItem.format] || cartItem.format;
-
-                        html += '<div class="ec-drawer-item">';
-                        html += '<div class="ec-drawer-item-thumb-wrap">' + itemDetails.thumb + '</div>';
-                        html += '<div class="ec-drawer-item-info">';
-                        html += '<span class="ec-drawer-item-title">' + escapeHtml(itemDetails.title) + '</span>';
-                        html += optLabels;
-                        var varLabel = cartItem.variation_name ? '<span style="color:var(--pp-accent); font-size:0.75rem; display:block;">' + escapeHtml(cartItem.variation_name) + '</span>' : '';
-                        html += '<div class="ec-drawer-item-meta">' + varLabel + escapeHtml(formatLabel) + ' x ' + cartItem.qty + '</div>';
-                        var priceHtml = '¥' + subtotal.toLocaleString();
-                        if (itemPrice < itemDetails.original_price) {
-                            priceHtml += ' <span class="ec-member-discount-badge" style="font-size:10px; background:#ff4d4d; color:#fff; padding:2px 4px; border-radius:3px; margin-left:5px; vertical-align:middle;">会員割引</span>';
-                        }
-
-                        html += '<div class="ec-drawer-item-price">' + priceHtml + '</div>';
-                        html += '</div>';
-                        html += '<button class="remove-item" data-index="' + index + '" style="background:none; border:none; color:#ccc; cursor:pointer;">&times;</button>';
-                        html += '</div>';
-                    });
-                    $itemsContainer.html(html);
-                    $totalAmount.text('¥' + total.toLocaleString());
-                }
+            var itemPrice = parseInt(itemDetails.price, 10) || 0;
+            var extraPrice = 0;
+            var optLabels = '';
+            if (cartItem.options && cartItem.options.length > 0) {
+                cartItem.options.forEach(function(opt) {
+                    extraPrice += (parseInt(opt.price, 10) || 0);
+                    var gLabel = (opt.group && !['項目', 'オプション'].includes(opt.group)) ? escapeHtml(opt.group) + ': ' : '+ ';
+                    optLabels += '<span style="color:var(--pp-accent); font-size:0.75rem; display:block;">' + gLabel + escapeHtml(opt.name) + '</span>';
+                });
             }
+
+            var subtotal = (itemPrice + extraPrice) * (parseInt(cartItem.qty, 10) || 1);
+            total += subtotal;
+
+            var formatLabel = photoPurchase.labels[cartItem.format] || cartItem.format;
+
+            html += '<div class="ec-drawer-item">';
+            html += '<div class="ec-drawer-item-thumb-wrap">' + itemDetails.thumb + '</div>';
+            html += '<div class="ec-drawer-item-info">';
+            html += '<span class="ec-drawer-item-title">' + escapeHtml(itemDetails.title) + '</span>';
+            html += optLabels;
+            var varLabel = cartItem.variation_name ? '<span style="color:var(--pp-accent); font-size:0.75rem; display:block;">' + escapeHtml(cartItem.variation_name) + '</span>' : '';
+            html += '<div class="ec-drawer-item-meta">' + varLabel + escapeHtml(formatLabel) + ' x ' + cartItem.qty + '</div>';
+            var priceHtml = '¥' + subtotal.toLocaleString();
+            if (itemPrice < itemDetails.original_price) {
+                priceHtml += ' <span class="ec-member-discount-badge" style="font-size:10px; background:#ff4d4d; color:#fff; padding:2px 4px; border-radius:3px; margin-left:5px; vertical-align:middle;">会員割引</span>';
+            }
+
+            html += '<div class="ec-drawer-item-price">' + priceHtml + '</div>';
+            html += '</div>';
+            html += '<button class="remove-item" data-index="' + index + '" style="background:none; border:none; color:#ccc; cursor:pointer;">&times;</button>';
+            html += '</div>';
         });
+        $itemsContainer.html(html);
+        $totalAmount.text('¥' + total.toLocaleString());
     }
 
     // --- お気に入り機能 ---
@@ -170,75 +289,6 @@ jQuery(document).ready(function ($) {
         renderFavDashboard();
     }
 
-    function renderFavDashboard() {
-        var $wrapper = $('#ec-favorites-dashboard-wrapper');
-        var $list = $('#ec-favorites-dashboard-list');
-        if (!$wrapper.length) return;
-
-        var favIds = getFavs();
-        if (favIds.length === 0) {
-            $wrapper.fadeOut();
-            return;
-        }
-
-        $wrapper.show();
-        
-        // Only show loader if empty
-        if ($list.is(':empty')) {
-            $list.html('<div style="grid-column: 1/-1; text-align:center; padding:40px; color:#94a3b8;">読み込み中...</div>');
-        }
-
-        $.ajax({
-            url: photoPurchase.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'photo_purchase_get_favorite_details',
-                product_ids: favIds,
-                nonce: photoPurchase.nonce
-            },
-            success: function(response) {
-                if (response.success && response.data.length > 0) {
-                    var html = '';
-                    response.data.forEach(function(item) {
-                        html += `
-                            <div class="fav-product-card" style="position:relative; background:#f8fafc; border:1px solid #e2e8f0; border-radius:16px; overflow:hidden; transition:all 0.2s;">
-                                <a href="${escapeHtml(item.permalink)}" style="text-decoration:none; color:inherit; display:block;">
-                                    <div style="aspect-ratio:1; overflow:hidden; background:#eee;">
-                                        <img src="${escapeHtml(item.thumbnail)}" style="width:100%; height:100%; object-fit:cover;">
-                                    </div>
-                                    <div style="padding:12px;">
-                                        <div style="font-size:13px; font-weight:bold; color:#1e293b; margin-bottom:4px; display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden;">
-                                            ${escapeHtml(item.title)}
-                                        </div>
-                                        <div style="font-size:14px; font-800; color:#4f46e5;">
-                                            ${escapeHtml(item.price_display)}
-                                        </div>
-                                    </div>
-                                </a>
-                                <button class="fav-btn is-fav" data-id="${item.id}" style="position:absolute; top:8px; right:8px; background:rgba(255,255,255,0.9); border:none; width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.1); z-index:10;">
-                                    <svg viewBox="0 0 24 24" width="18" height="18" fill="#f43f5e"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
-                                </button>
-                            </div>
-                        `;
-                    });
-                    $list.html(html);
-                } else {
-                    $wrapper.fadeOut();
-                }
-            },
-            error: function() {
-                $list.html('<div style="grid-column: 1/-1; text-align:center; padding:20px; color:#ef4444;">エラーが発生しました</div>');
-            }
-        });
-    }
-
-    function updateFavUI() {
-        var favs = getFavs();
-        $('.fav-btn').removeClass('is-fav');
-        favs.forEach(function (id) {
-            $('.fav-btn[data-id="' + id + '"]').addClass('is-fav');
-        });
-    }
 
     $(document).on('click', '.fav-btn', function (e) {
         e.preventDefault();
@@ -424,7 +474,7 @@ jQuery(document).ready(function ($) {
     });
 
     // --- チェックアウト画面の描画 ---
-    function renderCheckout() {
+    function renderCheckout(serverItems) {
         var $container = $('#photo-checkout-items');
         var cart = getCart();
 
@@ -485,151 +535,144 @@ jQuery(document).ready(function ($) {
             $codOption.show(); $bankOption.show();
         }
 
-        $.ajax({
-            url: photoPurchase.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'photo_get_cart_details',
-                cart: cart,
-                nonce: photoPurchase.nonce
-            },
-            success: function (response) {
-                if (response.success) {
-                    var html = '<div class="table-responsive"><table style="width:100%; border-collapse:collapse; min-width: 600px;">';
-                    html += '<thead style="background:#f8f9fa;"><tr><th style="padding:15px; text-align:left;">写真</th><th style="padding:15px; text-align:left;">商品名 / 形式</th><th style="padding:15px; text-align:right;">単価</th><th style="padding:15px; text-align:center;">数量</th><th style="padding:15px; text-align:right;">小計</th><th style="padding:15px;"></th></tr></thead><tbody>';
+        // 引数がない場合は updateCartUI 経由での再実行を待つ
+        if (!serverItems) {
+            updateCartUI();
+            return;
+        }
 
-                    var itemsTotal = 0;
-                    cart.forEach(function (cartItem, index) {
-                        var itemDetails = response.data.find(d => d.id == cartItem.id && d.format == cartItem.format && (d.variation_id || '') == (cartItem.variation_id || ''));
-                        if (!itemDetails) return;
+        var html = '<div class="table-responsive"><table style="width:100%; border-collapse:collapse; min-width: 600px;">';
+        html += '<thead style="background:#f8f9fa;"><tr><th style="padding:15px; text-align:left;">写真</th><th style="padding:15px; text-align:left;">商品名 / 形式</th><th style="padding:15px; text-align:right;">単価</th><th style="padding:15px; text-align:center;">数量</th><th style="padding:15px; text-align:right;">小計</th><th style="padding:15px;"></th></tr></thead><tbody>';
 
-                        var itemPrice = parseInt(itemDetails.price, 10) || 0;
-                        var extraPrice = 0;
-                        var optHtml = '';
-                        if (cartItem.options && cartItem.options.length > 0) {
-                            cartItem.options.forEach(function(opt) {
-                                var p = parseInt(opt.price, 10) || 0;
-                                extraPrice += p;
-                                var gLabel = (opt.group && !['項目', 'オプション'].includes(opt.group)) ? opt.group + ': ' : '+ ';
-                                optHtml += '<br><small style="color:var(--pp-accent);">' + gLabel + opt.name + ' (+ ' + p.toLocaleString() + '円)</small>';
-                            });
-                        }
+        var itemsTotal = 0;
+        cart.forEach(function (cartItem, index) {
+            var itemDetails = serverItems.find(d => d.id == cartItem.id && d.format == cartItem.format && (d.variation_id || '') == (cartItem.variation_id || ''));
+            if (!itemDetails) return;
 
-                        var unitTotal = itemPrice + extraPrice;
-                        var subtotal = unitTotal * (parseInt(cartItem.qty, 10) || 1);
-                        itemsTotal += subtotal;
+            var itemPrice = parseInt(itemDetails.price, 10) || 0;
+            var extraPrice = 0;
+            var optHtml = '';
+            if (cartItem.options && cartItem.options.length > 0) {
+                cartItem.options.forEach(function(opt) {
+                    var p = parseInt(opt.price, 10) || 0;
+                    extraPrice += p;
+                    var gLabel = (opt.group && !['項目', 'オプション'].includes(opt.group)) ? escapeHtml(opt.group) + ': ' : '+ ';
+                    optHtml += '<br><small style="color:var(--pp-accent);">' + gLabel + escapeHtml(opt.name) + ' (+ ' + p.toLocaleString() + '円)</small>';
+                });
+            }
 
-                        var formatLabel = photoPurchase.labels[cartItem.format] || cartItem.format;
+            var unitTotal = itemPrice + extraPrice;
+            var subtotal = unitTotal * (parseInt(cartItem.qty, 10) || 1);
+            itemsTotal += subtotal;
 
-                        html += '<tr style="border-bottom:1px solid #eee;">';
-                        html += '<td style="padding:15px;">' + itemDetails.thumb + '</td>';
-                        
-                        var nameLine = '<div style="font-weight:bold; margin-bottom:4px;">' + itemDetails.title + '</div>';
-                        var displayVarName = cartItem.variation_name || itemDetails.variation_name || '';
-                        if (displayVarName) {
-                            nameLine += '<div style="font-size:12px; color:var(--pp-accent); margin-bottom:4px;">' + displayVarName + '</div>';
-                        }
-                        if (unitTotal < (parseInt(itemDetails.original_price, 10) || 0)) {
-                            nameLine += '<div style="margin-bottom:4px;"><span class="ec-member-discount-badge" style="font-size:10px; background:#ff4d4d; color:#fff; padding:2px 6px; border-radius:3px; font-weight:normal;">会員割引適用中</span></div>';
-                        }
-                        
-                        html += '<td style="padding:15px;">' + nameLine + '<small style="color:#666;">タイプ: ' + formatLabel + '</small>' + optHtml + '</td>';
-                        html += '<td style="padding:15px; text-align:right;">' + unitTotal.toLocaleString() + ' 円</td>';
-                        html += '<td style="padding:15px; text-align:center;">' + cartItem.qty + '</td>';
-                        html += '<td style="padding:15px; text-align:right;">' + subtotal.toLocaleString() + ' 円</td>';
-                        html += '<td style="padding:15px; text-align:right;"><button class="remove-item danger-btn" data-index="' + index + '">&times;</button></td>';
-                        html += '</tr>';
-                    });
-                    html += '</tbody><tfoot>';
+            var formatLabel = photoPurchase.labels[cartItem.format] || cartItem.format;
 
-                    var shippingFee = 0;
-                    var codFee = 0;
-                    var selectedPref = $('#shipping_pref').val();
-                    var selectedMethod = $('input[name="payment_method"]:checked').val();
-                    var shippingPending = false;
+            html += '<tr style="border-bottom:1px solid #eee;">';
+            html += '<td style="padding:15px;">' + itemDetails.thumb + '</td>';
+            
+            var nameLine = '<div style="font-weight:bold; margin-bottom:4px;">' + escapeHtml(itemDetails.title) + '</div>';
+            var displayVarName = cartItem.variation_name || itemDetails.variation_name || '';
+            if (displayVarName) {
+                nameLine += '<div style="font-size:12px; color:var(--pp-accent); margin-bottom:4px;">' + escapeHtml(displayVarName) + '</div>';
+            }
+            if (unitTotal < (parseInt(itemDetails.original_price, 10) || 0)) {
+                nameLine += '<div style="margin-bottom:4px;"><span class="ec-member-discount-badge" style="font-size:10px; background:#ff4d4d; color:#fff; padding:2px 6px; border-radius:3px; font-weight:normal;">会員割引適用中</span></div>';
+            }
+            
+            html += '<td style="padding:15px;">' + nameLine + '<small style="color:#666;">タイプ: ' + escapeHtml(formatLabel) + '</small>' + optHtml + '</td>';
+            html += '<td style="padding:15px; text-align:right;">' + unitTotal.toLocaleString() + ' 円</td>';
+            html += '<td style="padding:15px; text-align:center;">' + cartItem.qty + '</td>';
+            html += '<td style="padding:15px; text-align:right;">' + subtotal.toLocaleString() + ' 円</td>';
+            html += '<td style="padding:15px; text-align:right;"><button class="remove-item danger-btn" data-index="' + index + '">&times;</button></td>';
+            html += '</tr>';
+        });
+        html += '</tbody><tfoot>';
 
-                    if (hasPhysical) {
-                        var rules = photoPurchase.shipping;
-                        if (rules.free_threshold > 0 && itemsTotal >= rules.free_threshold) {
-                            shippingFee = 0;
-                        } else if (selectedPref) {
-                            shippingFee = (rules.pref_rates[selectedPref] !== undefined) ? parseInt(rules.pref_rates[selectedPref], 10) : parseInt(rules.flat_rate, 10);
-                        } else {
-                            shippingPending = true;
-                        }
+        var shippingFee = 0;
+        var codFee = 0;
+        var selectedPref = $('#shipping_pref').val();
+        var selectedMethod = $('input[name="payment_method"]:checked').val();
+        var shippingPending = false;
 
-                        if (selectedMethod === 'cod') {
-                            var baseTotal = itemsTotal + shippingFee;
-                            var tiers = photoPurchase.shipping.cod_tiers;
-                            if (baseTotal < parseInt(tiers.tier1_limit, 10)) {
-                                codFee = parseInt(tiers.tier1_fee, 10);
-                            } else if (baseTotal < parseInt(tiers.tier2_limit, 10)) {
-                                codFee = parseInt(tiers.tier2_fee, 10);
-                            } else if (baseTotal < parseInt(tiers.tier3_limit, 10)) {
-                                codFee = parseInt(tiers.tier3_fee, 10);
-                            } else {
-                                codFee = parseInt(tiers.max_fee, 10);
-                            }
-                        }
-                    }
+        if (hasPhysical) {
+            var rules = photoPurchase.shipping;
+            if (rules.free_threshold > 0 && itemsTotal >= rules.free_threshold) {
+                shippingFee = 0;
+            } else if (selectedPref) {
+                shippingFee = (rules.pref_rates[selectedPref] !== undefined) ? parseInt(rules.pref_rates[selectedPref], 10) : parseInt(rules.flat_rate, 10);
+            } else {
+                shippingPending = true;
+            }
 
-                    var grandTotal = itemsTotal + shippingFee + codFee;
-                    var appliedCoupon = getAppliedCoupon();
-                    var discountAmount = 0;
-                    if (appliedCoupon) {
-                        if (appliedCoupon.type === 'percent') {
-                            discountAmount = Math.floor(itemsTotal * (parseInt(appliedCoupon.amount, 10) / 100));
-                        } else {
-                            discountAmount = parseInt(appliedCoupon.amount, 10);
-                        }
-                        grandTotal -= discountAmount;
-                    }
-
-                    html += '<tr style="background:#fcfcfc;"><td colspan="4" style="padding:10px 20px; text-align:right;">商品合計</td><td style="padding:10px 20px; text-align:right;">' + itemsTotal.toLocaleString() + ' 円</td><td></td></tr>';
-
-                    if (appliedCoupon) {
-                        var durationLabel = '';
-                        if (hasSubscription) {
-                            if (appliedCoupon.stripe_duration === 'forever') { durationLabel = ' <small style="font-weight:normal;">(継続適用)</small>'; }
-                            else if (appliedCoupon.stripe_duration === 'repeating') { durationLabel = ' <small style="font-weight:normal;">(' + appliedCoupon.stripe_months + 'ヶ月間)</small>'; }
-                            else { durationLabel = ' <small style="font-weight:normal;">(初回のみ)</small>'; }
-                        }
-                        html += '<tr style="background:#f0fff0;"><td colspan="4" style="padding:10px 20px; text-align:right; color:#2e7d32;">クーポン割引 (' + appliedCoupon.code + ')' + durationLabel + '</td>';
-                        html += '<td style="padding:10px 20px; text-align:right; color:#2e7d32;">- ' + discountAmount.toLocaleString() + ' 円</td>';
-                        html += '<td style="padding:10px 20px;"><button id="remove-coupon" class="danger-btn" style="padding:2px 8px; font-size:0.8rem;">解除</button></td></tr>';
-                    }
-
-                    if (hasPhysical) {
-                        if (shippingPending) {
-                            html += '<tr style="background:#fcfcfc;"><td colspan="4" style="padding:10px 20px; text-align:right;">送料</td><td style="padding:10px 20px; text-align:right; color:#999; font-style:italic;">都道府県選択後に表示</td><td></td></tr>';
-                        } else {
-                            var shippingLabel = (shippingFee === 0 && itemsTotal > 0) ? '送料無料' : shippingFee.toLocaleString() + ' 円';
-                            html += '<tr style="background:#fcfcfc;"><td colspan="4" style="padding:10px 20px; text-align:right;">送料 (' + selectedPref + ')</td><td style="padding:10px 20px; text-align:right;">' + shippingLabel + '</td><td></td></tr>';
-                        }
-                        if (codFee > 0) {
-                            html += '<tr style="background:#fff9e6;"><td colspan="4" style="padding:10px 20px; text-align:right; font-size:0.9rem;">代引き手数料</td><td style="padding:10px 20px; text-align:right; font-size:0.9rem;">' + codFee.toLocaleString() + ' 円</td><td></td></tr>';
-                        }
-                    }
-
-                    html += '<tr style="background:#fcfcfc;"><td colspan="4" style="padding:20px; font-weight:bold; text-align:right; font-size:1.1rem;">合計</td>';
-                    html += '<td style="padding:20px; font-weight:bold; text-align:right; font-size:1.1rem; color:#0073aa;">' + Math.max(0, grandTotal).toLocaleString() + ' 円';
-                    if (hasPhysical && shippingPending) { html += '<br><small style="font-weight:normal; font-size:0.75rem; color:#999;">+ 送料</small>'; }
-                    html += '</td><td></td></tr>';
-                    html += '</tfoot></table></div>';
-
-                    if (!appliedCoupon) {
-                        html += '<div class="coupon-wrap" style="margin-top:20px; padding:15px; background:#f9f9f9; border-radius:8px; display:flex; gap:10px; align-items:center;">';
-                        html += '<input type="text" id="coupon-code-input" placeholder="クーポンコードを入力" style="flex:1; padding:8px; border:1px solid #ddd; border-radius:4px;">';
-                        html += '<button id="apply-coupon-btn" class="button" style="padding:8px 20px;">適用</button>';
-                        html += '</div><div id="coupon-message" style="margin-top:5px; font-size:0.85rem;"></div>';
-                    }
-
-                    $container.html(html);
-                    $('#cart_json').val(JSON.stringify(cart));
-                    $('#coupon_info').val(appliedCoupon ? JSON.stringify(appliedCoupon) : '');
+            if (selectedMethod === 'cod') {
+                var baseTotal = itemsTotal + shippingFee;
+                var tiers = photoPurchase.shipping.cod_tiers;
+                if (baseTotal < parseInt(tiers.tier1_limit, 10)) {
+                    codFee = parseInt(tiers.tier1_fee, 10);
+                } else if (baseTotal < parseInt(tiers.tier2_limit, 10)) {
+                    codFee = parseInt(tiers.tier2_fee, 10);
+                } else if (baseTotal < parseInt(tiers.tier3_limit, 10)) {
+                    codFee = parseInt(tiers.tier3_fee, 10);
+                } else {
+                    codFee = parseInt(tiers.max_fee, 10);
                 }
             }
-        });
+        }
+
+        var grandTotal = itemsTotal + shippingFee + codFee;
+        var appliedCoupon = getAppliedCoupon();
+        var discountAmount = 0;
+        if (appliedCoupon) {
+            if (appliedCoupon.type === 'percent') {
+                discountAmount = Math.floor(itemsTotal * (parseInt(appliedCoupon.amount, 10) / 100));
+            } else {
+                discountAmount = parseInt(appliedCoupon.amount, 10);
+            }
+            grandTotal -= discountAmount;
+        }
+
+        html += '<tr style="background:#fcfcfc;"><td colspan="4" style="padding:10px 20px; text-align:right;">商品合計</td><td style="padding:10px 20px; text-align:right;">' + itemsTotal.toLocaleString() + ' 円</td><td></td></tr>';
+
+        if (appliedCoupon) {
+            var durationLabel = '';
+            if (hasSubscription) {
+                if (appliedCoupon.stripe_duration === 'forever') { durationLabel = ' <small style="font-weight:normal;">(継続適用)</small>'; }
+                else if (appliedCoupon.stripe_duration === 'repeating') { durationLabel = ' <small style="font-weight:normal;">(' + appliedCoupon.stripe_months + 'ヶ月間)</small>'; }
+                else { durationLabel = ' <small style="font-weight:normal;">(初回のみ)</small>'; }
+            }
+            html += '<tr style="background:#f0fff0;"><td colspan="4" style="padding:10px 20px; text-align:right; color:#2e7d32;">クーポン割引 (' + appliedCoupon.code + ')' + durationLabel + '</td>';
+            html += '<td style="padding:10px 20px; text-align:right; color:#2e7d32;">- ' + discountAmount.toLocaleString() + ' 円</td>';
+            html += '<td style="padding:10px 20px;"><button id="remove-coupon" class="danger-btn" style="padding:2px 8px; font-size:0.8rem;">解除</button></td></tr>';
+        }
+
+        if (hasPhysical) {
+            if (shippingPending) {
+                html += '<tr style="background:#fcfcfc;"><td colspan="4" style="padding:10px 20px; text-align:right;">送料</td><td style="padding:10px 20px; text-align:right; color:#999; font-style:italic;">都道府県選択後に表示</td><td></td></tr>';
+            } else {
+                var shippingLabel = (shippingFee === 0 && itemsTotal > 0) ? '送料無料' : shippingFee.toLocaleString() + ' 円';
+                html += '<tr style="background:#fcfcfc;"><td colspan="4" style="padding:10px 20px; text-align:right;">送料 (' + selectedPref + ')</td><td style="padding:10px 20px; text-align:right;">' + shippingLabel + '</td><td></td></tr>';
+            }
+            if (codFee > 0) {
+                html += '<tr style="background:#fff9e6;"><td colspan="4" style="padding:10px 20px; text-align:right; font-size:0.9rem;">代引き手数料</td><td style="padding:10px 20px; text-align:right; font-size:0.9rem;">' + codFee.toLocaleString() + ' 円</td><td></td></tr>';
+            }
+        }
+
+        html += '<tr style="background:#fcfcfc;"><td colspan="4" style="padding:20px; font-weight:bold; text-align:right; font-size:1.1rem;">合計</td>';
+        html += '<td style="padding:20px; font-weight:bold; text-align:right; font-size:1.1rem; color:#0073aa;">' + Math.max(0, grandTotal).toLocaleString() + ' 円';
+        if (hasPhysical && shippingPending) { html += '<br><small style="font-weight:normal; font-size:0.75rem; color:#999;">+ 送料</small>'; }
+        html += '</td><td></td></tr>';
+        html += '</tfoot></table></div>';
+
+        if (!appliedCoupon) {
+            html += '<div class="coupon-wrap" style="margin-top:20px; padding:15px; background:#f9f9f9; border-radius:8px; display:flex; gap:10px; align-items:center;">';
+            html += '<input type="text" id="coupon-code-input" placeholder="クーポンコードを入力" style="flex:1; padding:8px; border:1px solid #ddd; border-radius:4px;">';
+            html += '<button id="apply-coupon-btn" class="button" style="padding:8px 20px;">適用</button>';
+            html += '</div><div id="coupon-message" style="margin-top:5px; font-size:0.85rem;"></div>';
+        }
+
+        $container.html(html);
+        $('#cart_json').val(JSON.stringify(cart));
+        $('#coupon_info').val(appliedCoupon ? JSON.stringify(appliedCoupon) : '');
     }
 
     $(document).on('change', '#shipping_pref, input[name="payment_method"]', function () {
@@ -927,7 +970,8 @@ jQuery(document).ready(function ($) {
 
         var cart = getCart();
         var hasSub = cart.some(c => c.format === 'subscription');
-        if (format === 'subscription' && cart.length > 0 && !hasSub) { alert('サブスク商品と通常商品は同時購入できません。'); return; }
+        if (format === 'subscription' && cart.length > 0 && !hasSub) { alert('サブスクリプション商品は通常商品と一緒に購入できません。'); return; }
+        if (format !== 'subscription' && hasSub) { alert('カート内にサブスクリプション商品が含まれています。'); return; }
 
         var $btn = $(this);
         var oldHtml = $btn.html();
@@ -994,12 +1038,31 @@ jQuery(document).ready(function ($) {
         $.ajax({
             url: photoPurchase.ajax_url,
             type: 'POST',
-            data: { action: 'photo_purchase_validate_reorder', items: items, nonce: photoPurchase.nonce },
+            data: { 
+                action: 'photo_purchase_validate_reorder', 
+                items: items, 
+                current_cart: getCart(),
+                nonce: photoPurchase.nonce 
+            },
             success: function(response) {
                 if (response.success) {
                     var cart = getCart();
+                    var hasSubInCart = cart.some(c => c.format === 'subscription');
+                    var hasNormalInCart = cart.some(c => c.format !== 'subscription');
+                    
                     var addedCount = 0;
+                    var mixedError = false;
+
                     response.data.available_items.forEach(function(item) {
+                        if (mixedError) return;
+
+                        // 混在チェック
+                        var isAddingSub = item.format === 'subscription';
+                        if ((hasSubInCart && !isAddingSub) || (hasNormalInCart && isAddingSub)) {
+                            mixedError = true;
+                            return;
+                        }
+
                         var existingIdx = cart.findIndex(c => c.id == item.id && c.format == item.format && (c.variation_id || '') == (item.variation_id || '') && JSON.stringify(c.options || []) === JSON.stringify(item.options || []));
                         if (existingIdx > -1) {
                             cart[existingIdx].qty = (parseInt(cart[existingIdx].qty, 10) || 0) + (parseInt(item.qty, 10) || 1);
@@ -1014,8 +1077,22 @@ jQuery(document).ready(function ($) {
                                 sub_requires_shipping: item.sub_requires_shipping === true || item.sub_requires_shipping === '1'
                             });
                         }
+                        
+                        // 1つでも追加されたら、その後の追加のために cart の状態を更新して認識させる
+                        if (isAddingSub) hasSubInCart = true;
+                        else hasNormalInCart = true;
+                        
                         addedCount++;
                     });
+
+                    if (mixedError) {
+                        alert('【購入制限エラー】\nサブスクリプション商品と通常商品を同時にカートに入れることはできません。現在のカートを空にするか、同一タイプの商品のみを選択してください。');
+                    }
+
+                    // PHP側からの混在エラーメッセージ（sold_out_titlesとは別枠）
+                    if (response.data.error_messages && response.data.error_messages.length > 0) {
+                        alert('【購入制限エラー】\n\n' + response.data.error_messages.join('\n'));
+                    }
 
                     if (addedCount > 0) {
                         saveCart(cart);
@@ -1024,7 +1101,7 @@ jQuery(document).ready(function ($) {
                     }
 
                     if (response.data.sold_out_titles && response.data.sold_out_titles.length > 0) {
-                        alert('一部商品は売り切れのため追加できませんでした。');
+                        alert('【売り切れのお知らせ】\n\n以下の商品は在庫がないため追加できませんでした：\n' + response.data.sold_out_titles.join('\n'));
                     }
                 } else {
                     alert(response.data.message || '商品の検証中にエラーが発生しました。');
@@ -1047,6 +1124,10 @@ jQuery(document).ready(function ($) {
     });
     updateCartUI();
     updateFavUI();
+    // マイページ用：カートと独立してお気に入りダッシュボードを初期化
+    if ($('#ec-favorites-dashboard-wrapper').length || $('#ec-member-fav-list').length) {
+        renderFavDashboard();
+    }
 
     // URLパラメータによるクイックビュー起動
     const urlParams = new URLSearchParams(window.location.search);

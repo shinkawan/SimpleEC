@@ -398,9 +398,10 @@ function photo_purchase_meta_box_callback($post)
 
 		echo '<p>';
 		echo '<label for="photo_high_res_file"><strong>' . __('ダウンロード用ファイル', 'photo-purchase') . '</strong></label><br>';
-		echo '<input type="text" id="photo_high_res_file" name="photo_high_res_file" value="' . esc_attr($high_res_file) . '" style="width:70%;" readonly>';
+		echo '<input type="text" id="photo_high_res_file" name="photo_high_res_file" value="' . esc_attr($high_res_file) . '" style="width:60%;" readonly>';
 		echo '<input type="hidden" id="photo_high_res_id" name="photo_high_res_id" value="' . esc_attr($high_res_id) . '">';
 		echo ' <button type="button" class="button photo_purchase_upload_button">' . __('ファイルを選択', 'photo-purchase') . '</button>';
+		echo ' <button type="button" class="button photo_purchase_clear_button" style="color:#b32d2e;" ' . (empty($high_res_file) ? 'style="display:none;"' : '') . '>' . __('クリア', 'photo-purchase') . '</button>';
 		echo '</p>';
 	}
 
@@ -504,6 +505,14 @@ function photo_purchase_meta_box_callback($post)
 					$('#photo_high_res_id').val(attachment.id);
 				});
 				frame.open();
+			});
+
+			$('.photo_purchase_clear_button').click(function(e) {
+				e.preventDefault();
+				if (confirm('ダウンロード用ファイルの設定をクリアしますか？')) {
+					$('#photo_high_res_file').val('');
+					$('#photo_high_res_id').val('');
+				}
 			});
 
 			// Gallery Selection

@@ -1735,6 +1735,7 @@ function photo_purchase_order_print_view($order_id, $type, $order_token = '')
     $items = json_decode($order->order_items, true);
     $shipping = json_decode($order->shipping_info, true);
     $title = ($type === 'print_receipt') ? '領収書' : '納品書 (請求書)';
+    $filename_pfx = ($type === 'print_receipt') ? 'receipt' : 'invoice';
     $site_name = get_bloginfo('name');
     ?>
     <!DOCTYPE html>
@@ -1909,7 +1910,7 @@ function photo_purchase_order_print_view($order_id, $type, $order_token = '')
 
                 const opt = {
                     margin: [10, 10, 10, 10],
-                    filename: '<?php echo $title; ?>_<?php echo esc_html($order->order_token); ?>.pdf',
+                    filename: '<?php echo $filename_pfx; ?>_<?php echo esc_html($order->order_token); ?>.pdf',
                     image: { type: 'jpeg', quality: 0.98 },
                     html2canvas: { scale: 2, useCORS: true, letterRendering: true },
                     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
@@ -2170,7 +2171,7 @@ function photo_purchase_export_orders_csv()
     $filename = 'orders_' . date('Ymd_His') . '.csv';
 
     header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Content-Disposition: inline; filename="' . $filename . '"');
 
     $output = fopen('php://output', 'w');
 
@@ -2550,7 +2551,7 @@ function photo_purchase_handle_secure_download()
 
     header('Content-Description: File Transfer');
     header('Content-Type: ' . ($file_info['type'] ? $file_info['type'] : 'application/octet-stream'));
-    header('Content-Disposition: attachment; filename="' . $new_file_name . '"');
+    header('Content-Disposition: inline; filename="' . $new_file_name . '"');
     header('Expires: 0');
     header('Cache-Control: must-revalidate');
     header('Pragma: public');

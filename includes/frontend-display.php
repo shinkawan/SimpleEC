@@ -278,10 +278,22 @@ function photo_purchase_gallery_shortcode($atts)
                 $description = apply_filters('the_content', get_post_field('post_content', $post_id));
                 ?>
                 <?php
-                 $use_variations = get_post_meta($post_id, '_photo_use_variations', true) === '1';
-                 $variations_data = $use_variations ? get_post_meta($post_id, '_photo_variation_skus', true) : array();
-                 $variations_json = htmlspecialchars(json_encode($variations_data), ENT_QUOTES, 'UTF-8');
-                 ?>
+                $use_variations = get_post_meta($post_id, '_photo_use_variations', true) === '1';
+                $variations_data = $use_variations ? get_post_meta($post_id, '_photo_variation_skus', true) : array();
+                $variations_json = htmlspecialchars(json_encode($variations_data), ENT_QUOTES, 'UTF-8');
+
+                // SKU管理商品は全バリエーションの在庫で売り切れ判定し、グローバルフラグを上書き
+                if ($use_variations && is_array($variations_data) && !empty($variations_data)) {
+                    $all_vars_sold_out = true;
+                    foreach ($variations_data as $v) {
+                        if (intval($v['stock'] ?? 0) > 0) {
+                            $all_vars_sold_out = false;
+                            break;
+                        }
+                    }
+                    $is_sold_out = $all_vars_sold_out;
+                }
+                ?>
                 <div class="photo-item <?php echo $is_sold_out ? 'is-sold-out' : ''; ?>" data-id="<?php echo $post_id; ?>" 
                      data-description="<?php echo esc_attr($description); ?>"
                      data-gallery='<?php echo $gallery_data; ?>'

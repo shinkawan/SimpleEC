@@ -146,6 +146,52 @@ add_action('wp_ajax_photo_get_cart_details', 'photo_purchase_get_cart_details');
 add_action('wp_ajax_nopriv_photo_get_cart_details', 'photo_purchase_get_cart_details');
 
 /**
+ * AJAX: Get Favorites Details for Dashboard
+ */
+function photo_purchase_get_fav_details()
+{
+    check_ajax_referer('photo_purchase_nonce', 'nonce');
+    $favs = (isset($_POST['favs']) && is_array($_POST['favs'])) ? $_POST['favs'] : array();
+    $data = array();
+
+    if (!empty($favs)) {
+        $auth_email = photo_purchase_get_auth_email();
+        $discount_rate = intval(get_option('photo_pp_member_discount_rate', '0'));
+        $apply_discount = (!empty($auth_email) && $discount_rate > 0);
+
+        foreach ($favs as $id) {
+            $id = intval($id);
+            if (get_post_status($id) !== 'publish') continue;
+
+            $prices = array();
+            $p_digital = get_post_meta($id, '_photo_price_digital', true) ?: get_post_meta($id, '_photo_price', true);
+            $p_l = get_post_meta($id, '_photo_price_l', true);
+            $p_sub = get_post_meta($id, '_photo_price_subscription', true);
+
+            if ($p_digital > 0) $prices[] = intval($p_digital);
+            if ($p_l > 0) $prices[] = intval($p_l);
+            if ($p_sub > 0) $prices[] = intval($p_sub);
+
+            $min_price = !empty($prices) ? min($prices) : 0;
+            if ($apply_discount && $min_price > 0) {
+                $min_price = floor($min_price * (1 - ($discount_rate / 100)));
+            }
+
+            $data[] = array(
+                'id' => $id,
+                'title' => get_the_title($id),
+                'thumb' => get_the_post_thumbnail($id, array(200, 200), array('style' => 'width:100%; height:auto; display:block;')),
+                'url' => add_query_arg('photo_id', $id, photo_purchase_get_gallery_url()),
+                'price_display' => $min_price > 0 ? '¥' . number_format($min_price) : ''
+            );
+        }
+    }
+    wp_send_json_success($data);
+}
+add_action('wp_ajax_photo_get_fav_details', 'photo_purchase_get_fav_details');
+add_action('wp_ajax_nopriv_photo_get_fav_details', 'photo_purchase_get_fav_details');
+
+/**
  * AJAX: Sync Abandoned Cart
  */
 function photo_purchase_sync_abandoned_cart()
@@ -211,16 +257,52 @@ function photo_purchase_validate_reorder()
     check_ajax_referer('photo_purchase_nonce', 'nonce');
 
     $items = (isset($_POST['items']) && is_array($_POST['items'])) ? $_POST['items'] : array();
+    $current_cart = (isset($_POST['current_cart']) && is_array($_POST['current_cart'])) ? $_POST['current_cart'] : array();
+    
     $available_items = array();
     $sold_out_titles = array();
+    $error_messages = array();
+
+    $has_sub_in_cart = false;
+    $has_normal_in_cart = false;
+    foreach ($current_cart as $c_item) {
+        if (($c_item['format'] ?? '') === 'subscription') {
+            $has_sub_in_cart = true;
+        } else {
+            $has_normal_in_cart = true;
+        }
+    }
 
     if (!empty($items)) {
         foreach ($items as $item) {
             $id = intval($item['id']);
-            $format = sanitize_text_field($item['format'] ?? 'digital');
-            $variation_id = !empty($item['variation_id']) ? sanitize_text_field($item['variation_id']) : '';
+            
+            // --- 追加: 商品の存在とステータスチェック ---
+            $post_status = get_post_status($id);
+            if (!$post_status || $post_status !== 'publish') {
+                // 削除済み、または非公開の商品は「販売終了」として扱う
+                $sold_out_titles[] = (get_the_title($id) ?: __('不明な商品', 'photo-purchase')) . '（' . __('販売終了', 'photo-purchase') . '）';
+                continue;
+            }
+            // ------------------------------------------
 
+            $format = sanitize_text_field($item['format'] ?? 'digital');
+
+            // サブスクと通常商品の混在ガード
+            if ($format === 'subscription') {
+                if ($has_normal_in_cart) {
+                    $error_messages[] = get_the_title($id) . '：サブスクリプション商品は通常商品と一緒に購入できません。';
+                    continue;
+                }
+            } else {
+                if ($has_sub_in_cart) {
+                    $error_messages[] = get_the_title($id) . '：通常商品はサブスクリプション商品と一緒に購入できません。';
+                    continue;
+                }
+            }
+            $variation_id = !empty($item['variation_id']) ? sanitize_text_field($item['variation_id']) : '';
             $is_sold_out = get_post_meta($id, '_photo_is_sold_out', true) === '1';
+
             $manage_stock = get_post_meta($id, '_photo_manage_stock', true) === '1';
             $stock_qty = intval(get_post_meta($id, '_photo_stock_qty', true));
 
@@ -265,7 +347,8 @@ function photo_purchase_validate_reorder()
 
     wp_send_json_success(array(
         'available_items' => $available_items,
-        'sold_out_titles' => $sold_out_titles
+        'sold_out_titles' => $sold_out_titles,
+        'error_messages'  => $error_messages
     ));
 }
 add_action('wp_ajax_photo_purchase_validate_reorder', 'photo_purchase_validate_reorder');
@@ -691,54 +774,3 @@ function photo_purchase_cart_drawer_html()
 }
 add_action('wp_footer', 'photo_purchase_cart_drawer_html');
 
-/**
- * AJAX: Get Favorite Product Details
- */
-function photo_purchase_get_favorite_details()
-{
-    check_ajax_referer('photo_purchase_nonce', 'nonce');
-
-    $ids = isset($_POST['product_ids']) ? array_map('intval', $_POST['product_ids']) : array();
-    $data = array();
-
-    if (!empty($ids)) {
-        foreach ($ids as $id) {
-            $post = get_post($id);
-            if (!$post || $post->post_type !== 'photo_product' || $post->post_status !== 'publish') {
-                continue;
-            }
-
-            $prices = array();
-            $p_digital = get_post_meta($id, '_photo_price_digital', true);
-            if (!$p_digital) $p_digital = get_post_meta($id, '_photo_price', true);
-            $p_l = get_post_meta($id, '_photo_price_l', true);
-            $p_sub = get_post_meta($id, '_photo_price_subscription', true);
-
-            if ($p_digital > 0) $prices[] = intval($p_digital);
-            if ($p_l > 0) $prices[] = intval($p_l);
-            if ($p_sub > 0) $prices[] = intval($p_sub);
-
-            // Member Discount check
-            $auth_email = photo_purchase_get_auth_email();
-            $discount_rate = intval(get_option('photo_pp_member_discount_rate', '0'));
-            $apply_discount = (!empty($auth_email) && $discount_rate > 0);
-
-            $min_price = !empty($prices) ? min($prices) : 0;
-            if ($apply_discount && $min_price > 0) {
-                $min_price = floor($min_price * (1 - ($discount_rate / 100)));
-            }
-
-            $data[] = array(
-                'id' => $id,
-                'title' => get_the_title($id),
-                'price_display' => '¥' . number_format($min_price),
-                'thumbnail' => get_the_post_thumbnail_url($id, 'medium') ?: PHOTO_PURCHASE_URL . 'assets/images/no-image.png',
-                'permalink' => add_query_arg('photo_id', $id, photo_purchase_get_gallery_url())
-            );
-        }
-    }
-
-    wp_send_json_success($data);
-}
-add_action('wp_ajax_photo_purchase_get_favorite_details', 'photo_purchase_get_favorite_details');
-add_action('wp_ajax_nopriv_photo_purchase_get_favorite_details', 'photo_purchase_get_favorite_details');
