@@ -545,6 +545,24 @@
           <li><strong>一律送料への併用</strong>: 空欄の県は「全国一律送料」が適用されます。</li>
         </ul>
       </div>
+
+      <div class="card" id="webhook-setup" style="margin-top:24px; border-left:4px solid #635bff;">
+        <h4>🔗 Stripe Webhook（署名シークレット）の設定手順</h4>
+        <p>決済の完了やサブスクリプション（定期購入）の自動更新・解約をサイトに正確に同期させるために必須の設定です。</p>
+        <ol style="padding-left:20px; font-size:0.95rem;">
+          <li><strong>エンドポイントの作成</strong>: <a href="https://dashboard.stripe.com/webhooks" target="_blank" rel="noopener">StripeダッシュボードのWebhook設定</a>を開き、「エンドポイントを追加」をクリックします。</li>
+          <li><strong>URLの入力</strong>: エンドポイントURLに <code>【あなたのサイトURL】/?photo_purchase_action=stripe_webhook</code> を入力します。</li>
+          <li><strong>イベントの選択</strong>: 以下の3つを選択して保存します。
+            <ul style="margin-top:4px; margin-bottom:8px;">
+              <li><code>checkout.session.completed</code> （決済完了時）</li>
+              <li><code>invoice.paid</code> （サブスクリプション自動更新時）</li>
+              <li><code>customer.subscription.deleted</code> （サブスクリプション解約時）</li>
+            </ul>
+          </li>
+          <li><strong>シークレットの取得</strong>: 追加されたエンドポイントの設定画面で「署名シークレット」を表示し、<code>whsec_</code> から始まる文字列をコピーします。</li>
+          <li><strong>プラグインへの登録</strong>: WordPress管理画面「各種設定」＞「決済設定」タブ内の <strong>Webhook署名シークレット</strong> 欄にペーストして保存します。</li>
+        </ol>
+      </div>
     </section>
 
     <!-- 3. 商品の登録・管理 -->
@@ -1029,8 +1047,7 @@
 
         <div class="alert alert-warning">
           ⚠️
-          <strong>Webhookの設定</strong>：サブスクの「解約」をシステムに反映させるには、Stripe管理画面でWebhookの設定（<code>customer.subscription.deleted</code>
-          を「送る」設定）が必要です。
+          <strong>Webhookの設定</strong>：サブスクの「解約」をシステムに反映させるには、Stripe管理画面でWebhookの設定が必要です。詳しくは<a href="#webhook-setup">Stripe Webhook（署名シークレット）の設定手順</a>をご参照ください。
         </div>
       </section>
 

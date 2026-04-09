@@ -465,9 +465,9 @@ body.admin-bar .photo-cart-indicator {
 }
 
 .fav-filter-btn.active {
-	background: #ff4d4d;
-	color: #fff;
-	border-color: #ff4d4d;
+	background: #fff5f5 !important;
+	color: #ff4d4d !important;
+	border-color: #ff4d4d !important;
 }
 
 /* --- v2 Mini Cart Drawer --- */

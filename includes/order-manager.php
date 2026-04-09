@@ -1889,25 +1889,57 @@ function photo_purchase_order_print_view($order_id, $type, $order_token = '')
                     max-width: none;
                 }
             }
+        <style>
+            html, body {
+                margin: 0;
+                padding: 0;
+                height: 100vh;
+                width: 100vw;
+            }
+            #loading-screen {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background: #f8fafc;
+                z-index: 9999;
+                font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            }
+            .spinner {
+                border: 4px solid #e2e8f0;
+                border-top: 4px solid #0ea5e9;
+                border-radius: 50%;
+                width: 40px;
+                height: 40px;
+                animation: spin 1s linear infinite;
+                margin-bottom: 16px;
+            }
+            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+            /* Original print container is hidden by the fixed loading screen overlay */
+            #print-wrap {
+                visibility: hidden;
+            }
         </style>
     </head>
 
     <body>
-        <div class="no-print" style="text-align:center; padding: 20px; background: #fff; border-bottom: 1px solid #ddd; margin-bottom: 20px; position: sticky; top: 0; z-index: 1000; display: flex; justify-content: center; gap: 15px;">
-            <button onclick="downloadPDF();" id="download-btn" style="padding:12px 25px; cursor:pointer; background: #0073aa; color: #fff; border: none; border-radius: 4px; font-weight: bold; font-size: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">📥 PDFをダウンロード (直接保存)</button>
-            <button onclick="window.print();" style="padding:12px 25px; cursor:pointer; background: #f7f7f7; color: #333; border: 1px solid #ccc; border-radius: 4px; font-weight: bold; font-size: 15px;">🖨️ 印刷設定を開く</button>
+        <div id="loading-screen">
+            <div class="spinner"></div>
+            <h2 style="color:#334155; font-size:18px; font-weight:bold; margin:0 0 8px;">PDFを生成しています...</h2>
+            <p style="color:#64748b; font-size:14px; margin:0;">そのままお待ちください。</p>
         </div>
         
+        <div id="print-wrap">
+        
         <script>
-            function downloadPDF() {
+            document.addEventListener('DOMContentLoaded', function() {
                 const element = document.getElementById('print-container');
-                const btn = document.getElementById('download-btn');
-                const originalText = btn.innerText;
                 
-                btn.innerText = '⌛ 生成中...';
-                btn.disabled = true;
-                btn.style.opacity = '0.7';
-
                 const opt = {
                     margin: [10, 10, 10, 10],
                     filename: '<?php echo $filename_pfx; ?>_<?php echo esc_html($order->order_token); ?>.pdf',
@@ -1917,18 +1949,25 @@ function photo_purchase_order_print_view($order_id, $type, $order_token = '')
                     pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
                 };
 
-                html2pdf().set(opt).from(element).save().then(() => {
-                    btn.innerText = originalText;
-                    btn.disabled = false;
-                    btn.style.opacity = '1';
+                html2pdf().set(opt).from(element).outputPdf('bloburl').then((pdfUrl) => {
+                    // Hide loading screen
+                    document.getElementById('loading-screen').style.display = 'none';
+                    // Remove the off-screen element to save memory and prevent double display
+                    const wrap = document.getElementById('print-wrap');
+                    if(wrap) wrap.remove();
+                    
+                    document.body.style.margin = '0';
+                    document.body.style.overflow = 'hidden';
+                    
+                    // Directly navigate the top frame to the blob URL
+                    // This mimics Welcart's behavior, allowing browser extensions (like Acrobat)
+                    // to natively intercept and display the PDF.
+                    window.location.replace(pdfUrl);
                 }).catch(err => {
-                    console.error('PDF生成エラー:', err);
-                    alert('PDFの生成中にエラーが発生しました。印刷設定からPDF保存をお試しください。');
-                    btn.innerText = originalText;
-                    btn.disabled = false;
-                    btn.style.opacity = '1';
+                    console.error('PDF generation error:', err);
+                    document.getElementById('loading-screen').innerHTML = '<h3>PDFの生成に失敗しました。再読み込みしてください。</h3>';
                 });
-            }
+            });
         </script>
 
         <div id="print-container" class="container">
@@ -2121,7 +2160,8 @@ function photo_purchase_order_print_view($order_id, $type, $order_token = '')
             <div class="footer">
                 <p>ご利用いただきありがとうございます。</p>
             </div>
-        </div>
+        </div> <!-- /#print-container -->
+        </div> <!-- /#print-wrap -->
     </body>
 
     </html>
@@ -2154,6 +2194,103 @@ function photo_purchase_handle_print_actions()
             photo_purchase_export_orders_csv();
         }
     }
+}
+
+/**
+ * Handle Server-Side Temp PDF Upload to prevent WAF blocks (ERR_CONNECTION_RESET)
+ * and AntiVirus false positives for Blob URLs.
+ */
+add_action('wp_ajax_photo_purchase_upload_temp_pdf', 'photo_purchase_upload_temp_pdf');
+add_action('wp_ajax_nopriv_photo_purchase_upload_temp_pdf', 'photo_purchase_upload_temp_pdf');
+
+function photo_purchase_upload_temp_pdf()
+{
+    if (!isset($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'photo_pdf_upload_nonce')) {
+        wp_send_json_error(['message' => 'セキュリティチェックに失敗しました。']);
+    }
+
+    if (empty($_FILES['pdf_file']) || $_FILES['pdf_file']['error'] !== UPLOAD_ERR_OK) {
+        wp_send_json_error(['message' => 'ファイルのアップロードに失敗しました。']);
+    }
+
+    $upload_dir = wp_upload_dir();
+    $temp_dir = $upload_dir['basedir'] . '/simpleec_temp_pdf';
+    
+    if (!file_exists($temp_dir)) {
+        wp_mkdir_p($temp_dir);
+        // Protect directory from direct web access
+        file_put_contents($temp_dir . '/.htaccess', 'Deny from all');
+        file_put_contents($temp_dir . '/index.html', '');
+    }
+
+    $file_id = wp_generate_password(32, false);
+    $temp_file = $temp_dir . '/' . $file_id . '.tmp';
+
+    if (!move_uploaded_file($_FILES['pdf_file']['tmp_name'], $temp_file)) {
+        wp_send_json_error(['message' => 'サーバー内でのファイル保存に失敗しました。']);
+    }
+
+    $filename = isset($_POST['filename']) ? sanitize_file_name($_POST['filename']) : 'document.pdf';
+
+    $download_url = add_query_arg([
+        'action'   => 'photo_purchase_download_temp_pdf',
+        'file_id'  => $file_id,
+        'filename' => urlencode($filename),
+        '_wpnonce' => wp_create_nonce('photo_pdf_download_temp_' . $file_id)
+    ], admin_url('admin-post.php'));
+
+    wp_send_json_success(['download_url' => $download_url]);
+}
+
+/**
+ * Handle GET download for temp PDF file
+ */
+add_action('admin_post_photo_purchase_download_temp_pdf', 'photo_purchase_download_temp_pdf');
+add_action('admin_post_nopriv_photo_purchase_download_temp_pdf', 'photo_purchase_download_temp_pdf');
+
+function photo_purchase_download_temp_pdf()
+{
+    $file_id = isset($_GET['file_id']) ? sanitize_text_field($_GET['file_id']) : '';
+    $filename = isset($_GET['filename']) ? sanitize_text_field(urldecode($_GET['filename'])) : 'document.pdf';
+    
+    if (empty($file_id) || !preg_match('/^[a-zA-Z0-9]+$/', $file_id)) {
+        wp_die(__('不正なファイルIDです。', 'photo-purchase'));
+    }
+    
+    if (!isset($_GET['_wpnonce']) || !wp_verify_nonce($_GET['_wpnonce'], 'photo_pdf_download_temp_' . $file_id)) {
+        wp_die(__('セキュリティチェックに失敗しました。', 'photo-purchase'));
+    }
+
+    if (empty($filename)) {
+        $filename = 'document.pdf';
+    }
+
+    $upload_dir = wp_upload_dir();
+    $temp_file = $upload_dir['basedir'] . '/simpleec_temp_pdf/' . $file_id . '.tmp';
+
+    if (!file_exists($temp_file)) {
+        wp_die(__('ファイルが見つかりません。すでにダウンロードされた可能性があります。', 'photo-purchase'));
+    }
+
+    $filesize = filesize($temp_file);
+
+    // Clean output buffer to ensure pure PDF file download
+    if (ob_get_length()) {
+        ob_end_clean();
+    }
+    flush();
+
+    header('Content-Description: File Transfer');
+    header('Content-Type: application/pdf'); // Force real PDF
+    header('Content-Disposition: inline; filename="' . $filename . '"');
+    header('Cache-Control: private, max-age=0, must-revalidate');
+    header('Pragma: public');
+    header('Content-Length: ' . $filesize);
+    header('Connection: close');
+
+    readfile($temp_file);
+    unlink($temp_file); // Cleanup immediately after parsing
+    exit;
 }
 
 /**
@@ -3604,14 +3741,10 @@ function photo_purchase_member_dashboard_shortcode($atts)
 
                         <?php if ($is_sub_order && !empty($order->stripe_customer_id)): ?>
                             <div style="margin-top:20px; padding-top:20px; border-top: 1px dashed #e2e8f0; text-align:right;">
-                                <form action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="post" target="_blank" style="display:inline-block;">
-                                    <input type="hidden" name="action" value="photo_purchase_billing_portal">
-                                    <input type="hidden" name="customer_id" value="<?php echo esc_attr($order->stripe_customer_id); ?>">
-                                    <button type="submit" style="background:#fff; color:#475569; border:2px solid #e2e8f0; padding:10px 24px; border-radius:12px; font-size:14px; font-weight:bold; cursor:pointer; display:flex; align-items:center; gap:8px; transition:all 0.2s;">
-                                        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
-                                        プランの管理・詳細（Stripe）
-                                    </button>
-                                </form>
+                                <a href="<?php echo esc_url(add_query_arg(['action' => 'photo_purchase_billing_portal', 'customer_id' => $order->stripe_customer_id, '_wpnonce' => wp_create_nonce('photo_billing_' . $order->stripe_customer_id)], admin_url('admin-post.php'))); ?>" target="_blank" style="display:inline-flex; align-items:center; gap:8px; background:#fff; color:#475569; border:2px solid #e2e8f0; padding:10px 24px; border-radius:12px; font-size:14px; font-weight:bold; cursor:pointer; transition:all 0.2s; text-decoration:none;">
+                                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/></svg>
+                                    プランの管理・詳細（Stripe）
+                                </a>
                             </div>
                         <?php endif; ?>
 
@@ -3669,18 +3802,18 @@ add_shortcode('ec_member_dashboard', 'photo_purchase_member_dashboard_shortcode'
  * Handle Billing Portal Redirect
  */
 function photo_purchase_handle_billing_portal_redirect() {
-    if (!isset($_POST['customer_id'])) {
+    if (!isset($_REQUEST['customer_id'])) {
         wp_die('Missing customer ID');
     }
-    $customer_id = sanitize_text_field($_POST['customer_id']);
+    $customer_id = sanitize_text_field($_REQUEST['customer_id']);
 
     if (empty($customer_id)) {
         wp_die('Customer ID が設定されていません。管理画面の注文編集画面から Stripe Customer ID を入力してください。');
     }
 
-    // Simple verification
-    if (!isset($_COOKIE['photo_pp_auth_token'])) {
-        wp_die('Unauthorized: セッションが切れています。マイページにログインし直してください。');
+    // Verify nonce instead of cookie to avoid WAF/Browser dropping cookies on target="_blank" GET requests
+    if (!isset($_REQUEST['_wpnonce']) || !wp_verify_nonce($_REQUEST['_wpnonce'], 'photo_billing_' . $customer_id)) {
+        wp_die('Unauthorized: セッションまたはセキュリティトークンが切れています。マイページを再読み込みしてください。');
     }
 
     $secret_key = get_option('photo_pp_stripe_secret_key');

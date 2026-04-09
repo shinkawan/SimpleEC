@@ -771,11 +771,31 @@ jQuery(document).ready(function ($) {
             extra += (parseInt($(this).val(), 10) || 0);
         });
 
+        var formatVal = $formatSelect.is('select') ? $formatSelect.val() : $formatSelect.val();
+        var isSub = formatVal === 'subscription' || ($formatSelect.is('select') && $formatSelect.find('option:selected').data('is-sub') == '1');
+
         var qty = parseInt($qtyInput.val(), 10) || 1;
-        var total = (basePrice + varPrice + extra) * qty;
-        
+        var totalOriginal = (basePrice + varPrice + extra) * qty;
+        var totalDiscounted = totalOriginal;
+
+        var applyDiscount = typeof photoPurchase !== 'undefined' && photoPurchase.is_logged_in && parseInt(photoPurchase.member_discount_rate, 10) > 0;
+        if (applyDiscount && !isSub) {
+            totalDiscounted = Math.floor(varPrice === 0 && basePrice === 0 && extra === 0 ? 0 : totalOriginal * (1 - (parseInt(photoPurchase.member_discount_rate, 10) / 100)));
+        }
+
         if ($priceDisplay.length) {
-            $priceDisplay.text(total.toLocaleString());
+            var $priceWrap = $priceDisplay.closest('.photo-price-anim-wrap');
+            if (applyDiscount && !isSub && totalOriginal > totalDiscounted) {
+                $priceDisplay.html(
+                    '<span class="photo-price-original">¥' + totalOriginal.toLocaleString() + '</span>' +
+                    '<span class="photo-price-member">¥' + totalDiscounted.toLocaleString() + '</span>' +
+                    '<span class="member-discount-badge">会員割引 ' + parseInt(photoPurchase.member_discount_rate, 10) + '%OFF</span>'
+                );
+                $priceWrap.find('.price-symbol').hide();
+            } else {
+                $priceDisplay.text(totalOriginal.toLocaleString());
+                $priceWrap.find('.price-symbol').show();
+            }
         }
     }
 

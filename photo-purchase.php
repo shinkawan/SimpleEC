@@ -424,8 +424,9 @@ function photo_purchase_update_order_callback() {
 }
 
 // CSV エクスポート/インポート ハンドラ登録
-add_action('admin_post_photo_purchase_export_products_csv', 'photo_purchase_handle_export_products_csv');
-add_action('admin_post_photo_purchase_import_products_csv', 'photo_purchase_handle_import_products_csv');
+// admin-bulk-edit.php が読み込まれていないため、呼び出し時のFatal Errorを避ける目的でコメントアウトしています
+// add_action('admin_post_photo_purchase_export_products_csv', 'photo_purchase_handle_export_products_csv');
+// add_action('admin_post_photo_purchase_import_products_csv', 'photo_purchase_handle_import_products_csv');
 
 // 帳票出力 (印刷・PDF) ハンドラ
 add_action('init', function() {
