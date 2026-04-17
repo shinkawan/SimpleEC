@@ -261,7 +261,15 @@ function photo_purchase_admin_menus()
 		'photo_purchase_shortcode_helper_page'
 	);
 
-	add_action('admin_action_photo_purchase_duplicate_product', 'photo_purchase_handle_duplicate_product');
+	// CSV一括管理
+	add_submenu_page(
+		'edit.php?post_type=photo_product',
+		__('CSV一括管理', 'photo-purchase'),
+		__('CSV一括管理', 'photo-purchase'),
+		'manage_options',
+		'photo-purchase-bulk-edit',
+		'photo_purchase_bulk_edit_page'
+	);
 }
 add_action('admin_menu', 'photo_purchase_admin_menus');
 
@@ -1793,6 +1801,12 @@ require_once PHOTO_PURCHASE_PATH . 'includes/stripe-webhooks.php';
 require_once PHOTO_PURCHASE_PATH . 'includes/sns-handler.php';
 require_once PHOTO_PURCHASE_PATH . 'includes/auth-system.php';
 require_once PHOTO_PURCHASE_PATH . 'includes/abandoned-cart.php';
+require_once PHOTO_PURCHASE_PATH . 'includes/admin-bulk-edit.php';
+
+// Register Actions (Moved from admin_menu to global scope for admin-post.php support)
+add_action('admin_post_photo_purchase_export_products_csv', 'photo_purchase_handle_export_products_csv');
+add_action('admin_post_photo_purchase_import_products_csv', 'photo_purchase_handle_import_products_csv');
+add_action('admin_action_photo_purchase_duplicate_product', 'photo_purchase_handle_duplicate_product');
 
 /**
  * Enqueue Frontend Assets

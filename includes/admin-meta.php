@@ -456,33 +456,35 @@ function photo_purchase_meta_box_callback($post)
 				var defType = 'radio';
 				var isRequired = false;
 				
-				var row = '<div class="custom-option-row" style="display: flex; gap: 10px; margin-bottom: 5px; align-items: center; background: #fff; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">' +
+				var row = '<div class="custom-option-row" style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 10px; align-items: flex-end; background: #fff; padding: 12px; border: 1px solid #ddd; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">' +
 					'<input type="hidden" name="ec_opt_category[]" value="' + cat + '">' +
-					'<div style="flex:2;">' +
-					'<label style="font-size:11px; color:#666;">グループ名 (例: サイズ)</label><br>' +
-					'<input type="text" name="ec_opt_group[]" value="" placeholder="グループ名" style="width:100%;">' +
+					'<div style="flex: 2; min-width: 150px;">' +
+					'<label style="font-size:11px; color:#666; display: block; margin-bottom: 4px; white-space: nowrap;">グループ名 (例: サイズ)</label>' +
+					'<input type="text" name="ec_opt_group[]" value="" placeholder="グループ名" style="width:100%; padding: 5px;">' +
 					'</div>' +
-					'<div style="flex:3;">' +
-					'<label style="font-size:11px; color:#666;">オプション名 (例: Lサイズ)</label><br>' +
-					'<input type="text" name="ec_opt_name[]" value="" placeholder="名称" style="width:100%;">' +
+					'<div style="flex: 3; min-width: 200px;">' +
+					'<label style="font-size:11px; color:#666; display: block; margin-bottom: 4px; white-space: nowrap;">オプション名 (例: Lサイズ)</label>' +
+					'<input type="text" name="ec_opt_name[]" value="" placeholder="名称" style="width:100%; padding: 5px;">' +
 					'</div>' +
-					'<div style="width:100px;">' +
-					'<label style="font-size:11px; color:#666;">追加価格</label><br>' +
-					'<input type="number" name="ec_opt_price[]" value="0" placeholder="価格" style="width:70px;"> 円' +
+					'<div style="width: 110px; flex-shrink: 0;">' +
+					'<label style="font-size:11px; color:#666; display: block; margin-bottom: 4px; white-space: nowrap;">追加価格</label>' +
+					'<div style="display: flex; align-items: center; gap: 5px;">' +
+					'<input type="number" name="ec_opt_price[]" value="0" placeholder="価格" style="width:70px; padding: 5px;"> <span style="font-size: 11px;">円</span>' +
 					'</div>' +
-					'<div style="width:120px;">' +
-					'<label style="font-size:11px; color:#666;">形式</label><br>' +
-					'<select name="ec_opt_type[]" style="width:100%;">' +
+					'</div>' +
+					'<div style="width: 130px; flex-shrink: 0;">' +
+					'<label style="font-size:11px; color:#666; display: block; margin-bottom: 4px; white-space: nowrap;">形式</label>' +
+					'<select name="ec_opt_type[]" style="width:100%; padding: 4px;">' +
 					'<option value="radio" ' + (defType === 'radio' ? 'selected' : '') + '>単一 (Radio)</option>' +
 					'<option value="checkbox" ' + (defType === 'checkbox' ? 'selected' : '') + '>複数 (Check)</option>' +
 					'</select>' +
 					'</div>' +
-					'<div style="width:60px;">' +
-					'<label style="font-size:11px; color:#666;">必須</label><br>' +
-					'<input type="checkbox" name="ec_opt_required_check[]" value="1" ' + (isRequired ? 'checked' : '') + ' class="ec-opt-req-proxy">' +
+					'<div style="width: 50px; flex-shrink: 0; text-align: center;">' +
+					'<label style="font-size:11px; color:#666; display: block; margin-bottom: 4px; white-space: nowrap;">必須</label>' +
+					'<input type="checkbox" name="ec_opt_required_check[]" value="1" ' + (isRequired ? 'checked' : '') + ' class="ec-opt-req-proxy" style="margin: 0; vertical-align: middle;">' +
 					'<input type="hidden" name="ec_opt_required[]" value="' + (isRequired ? '1' : '0') + '" class="ec-opt-req-hidden">' +
 					'</div>' +
-					'<button type="button" class="remove-opt button" style="color:red; align-self:flex-end;">&times;</button>' +
+					'<button type="button" class="remove-opt button" style="color:#d63638; border-color:#d63638; margin-bottom: 2px;">削除</button>' +
 					'</div>';
 				container.append(row);
 			});
@@ -904,41 +906,43 @@ add_action('admin_enqueue_scripts', 'photo_purchase_admin_scripts');
  * Render Option Row v5 (Helper)
  */
 function photo_purchase_render_option_row_v5($name, $price, $type, $group, $category = 'attribute', $required = '0') {
-	$html = '<div class="custom-option-row" style="display: flex; gap: 10px; margin-bottom: 5px; align-items: center; background: #fff; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">';
+	$html = '<div class="custom-option-row" style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 10px; align-items: flex-end; background: #fff; padding: 12px; border: 1px solid #ddd; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">';
 	$html .= '<input type="hidden" name="ec_opt_category[]" value="' . esc_attr($category) . '">';
 	
 	// Group Name
-	$html .= '<div style="flex:2;">';
-	$html .= '<label style="font-size:11px; color:#666;">グループ名 (例: サイズ)</label><br>';
-	$html .= '<input type="text" name="ec_opt_group[]" value="' . esc_attr($group) . '" placeholder="グループ名" style="width:100%;">';
+	$html .= '<div style="flex: 2; min-width: 150px;">';
+	$html .= '<label style="font-size:11px; color:#666; display: block; margin-bottom: 4px; white-space: nowrap;">グループ名 (例: サイズ)</label>';
+	$html .= '<input type="text" name="ec_opt_group[]" value="' . esc_attr($group) . '" placeholder="グループ名" style="width:100%; padding: 5px;">';
 	$html .= '</div>';
 	
-	$html .= '<div style="flex:3;">';
-	$html .= '<label style="font-size:11px; color:#666;">オプション名 (例: Lサイズ)</label><br>';
-	$html .= '<input type="text" name="ec_opt_name[]" value="' . esc_attr($name) . '" placeholder="名称" style="width:100%;">';
+	$html .= '<div style="flex: 3; min-width: 200px;">';
+	$html .= '<label style="font-size:11px; color:#666; display: block; margin-bottom: 4px; white-space: nowrap;">オプション名 (例: Lサイズ)</label>';
+	$html .= '<input type="text" name="ec_opt_name[]" value="' . esc_attr($name) . '" placeholder="名称" style="width:100%; padding: 5px;">';
 	$html .= '</div>';
 	
-	$html .= '<div style="width:100px;">';
-	$html .= '<label style="font-size:11px; color:#666;">追加価格</label><br>';
-	$html .= '<input type="number" name="ec_opt_price[]" value="' . esc_attr($price) . '" placeholder="価格" style="width:70px;"> 円';
+	$html .= '<div style="width: 110px; flex-shrink: 0;">';
+	$html .= '<label style="font-size:11px; color:#666; display: block; margin-bottom: 4px; white-space: nowrap;">追加価格</label>';
+	$html .= '<div style="display: flex; align-items: center; gap: 5px;">';
+	$html .= '<input type="number" name="ec_opt_price[]" value="' . esc_attr($price) . '" placeholder="価格" style="width:70px; padding: 5px;"> <span style="font-size: 11px;">円</span>';
+	$html .= '</div>';
 	$html .= '</div>';
 	
-	$html .= '<div style="width:120px;">';
-	$html .= '<label style="font-size:11px; color:#666;">形式</label><br>';
-	$html .= '<select name="ec_opt_type[]" style="width:100%;">';
+	$html .= '<div style="width: 130px; flex-shrink: 0;">';
+	$html .= '<label style="font-size:11px; color:#666; display: block; margin-bottom: 4px; white-space: nowrap;">形式</label>';
+	$html .= '<select name="ec_opt_type[]" style="width:100%; padding: 4px;">';
 	$html .= '<option value="radio" ' . selected($type, 'radio', false) . '>単一 (Radio)</option>';
 	$html .= '<option value="checkbox" ' . selected($type, 'checkbox', false) . '>複数 (Check)</option>';
 	$html .= '</select>';
 	$html .= '</div>';
-
+	
 	// Required checkbox
-	$html .= '<div style="width:60px;">';
-	$html .= '<label style="font-size:11px; color:#666;">必須</label><br>';
-	$html .= '<input type="checkbox" name="ec_opt_required_check[]" value="1" ' . checked($required, '1', false) . ' class="ec-opt-req-proxy">';
+	$html .= '<div style="width: 50px; flex-shrink: 0; text-align: center;">';
+	$html .= '<label style="font-size:11px; color:#666; display: block; margin-bottom: 4px; white-space: nowrap;">必須</label>';
+	$html .= '<input type="checkbox" name="ec_opt_required_check[]" value="1" ' . checked($required, '1', false) . ' class="ec-opt-req-proxy" style="margin: 0; vertical-align: middle;">';
 	$html .= '<input type="hidden" name="ec_opt_required[]" value="' . esc_attr($required) . '" class="ec-opt-req-hidden">';
 	$html .= '</div>';
 	
-	$html .= '<button type="button" class="remove-opt button" style="color:red; align-self:flex-end;">&times;</button>';
+	$html .= '<button type="button" class="remove-opt button" style="color:#d63638; border-color:#d63638; margin-bottom: 2px;">削除</button>';
 	$html .= '</div>';
 	
 	return $html;

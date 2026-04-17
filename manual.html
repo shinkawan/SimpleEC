@@ -1424,12 +1424,64 @@
         </div>
       </section>
 
+      <!-- 26. CSVでの商品一括管理 -->
+      <section id="csv-bulk-edit">
+        <h2>26. CSVでの商品一括管理</h2>
+        <p>多数の商品データを一度に登録・更新するための機能です。Excel等で編集したCSVファイルをアップロードすることで、在庫数や価格、SKUなどを一括で変更できます。</p>
+
+        <div class="card">
+          <h4>📂 操作手順</h4>
+          <ol style="padding-left:20px; font-size:0.95rem;">
+            <li><strong>販売商品 → CSV一括管理</strong> メニューを開きます。</li>
+            <li>「CSVをダウンロード」をクリックして、現在のデータを取得します。</li>
+            <li>Excel等でCSVを開き、内容を編集します。（新規登録したい場合は ID 列を空欄にします）</li>
+            <li>編集したファイルを「インポート」欄からアップロードして実行します。</li>
+          </ol>
+        </div>
+
+        <div class="card">
+          <h4>📝 独自記法のルール</h4>
+          <p>SKUやオプションなどの複雑なデータは、以下のルールで記述してください。</p>
+          <table style="width:100%; font-size:0.85rem;">
+            <tr>
+              <th style="width:150px;">項目</th>
+              <th>記述ルール</th>
+              <th>例</th>
+            </tr>
+            <tr>
+              <td><strong>バリエーション (SKU)</strong></td>
+              <td><code>表示名=価格:加算額=在庫:数値=SKU:コード</code><br>※複数は <code>|</code> で区切る</td>
+              <td><code>Sサイズ=価格:0=在庫:10=SKU:S001|Mサイズ=価格:500=在庫:5=SKU:M001</code></td>
+            </tr>
+            <tr>
+              <td><strong>カスタムオプション</strong></td>
+              <td><code>グループ:名前=価格:加算額=形式:radio/check=必須:1/0</code><br>※複数は <code>|</code> で区切る</td>
+              <td><code>ラッピング:希望=価格:500=形式:radio=必須:1|ラッピング:不要=価格:0=形式:radio=必須:1</code></td>
+            </tr>
+            <tr>
+              <td><strong>カテゴリー</strong></td>
+              <td>名前をカンマで区切る</td>
+              <td><code>風景, 2024年, 海</code></td>
+            </tr>
+            <tr>
+              <td><strong>サムネイルURL</strong></td>
+              <td>画像の直接URLを記載</td>
+              <td>自動的にダウンロード（サイドロード）され登録されます</td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="alert alert-important">
+          💡 <strong>画像の最適化</strong>: すでにメディアライブラリにある画像URLを指定した場合、重複してダウンロードされないよう自動的に判定・スキップされる安全設計になっています。
+        </div>
+      </section>
+
       <!-- 28. アップデート履歴 -->
       <section id="changelog">
         <h2>28. アップデート履歴</h2>
         <ul>
           <li><strong>v5.0.0</strong> -
-            国際配送に正式対応。国別送料設定、受注一覧の国名バッジ表示、国に応じた住所フォーマット切り替え（メール・帳票）、管理画面での動的注文編集、Stripeチェックアウト時のサーバーサイド送料再計算などを実装。</li>
+            国際配送に正式対応。国別送料設定、受注一覧の国名バッジ表示、国に応じた住所フォーマット切り替え（メール・帳票）、管理画面での動的注文編集、Stripeチェックアウト時のサーバーサイド送料再計算などを実装。また、商品データのCSV一括管理機能をリニューアルし、バリエーションや画像URLの自動取得、独自記法による効率的な一括編集に対応しました。</li>
           <li><strong>v4.2.5</strong> - かご落ちリカバリー機能の不具合修正（JSエラー、タイムゾーン判定）。Stripe /
             PayPay決済時のSKU商品価格反映漏れを修正。システムログへの送信履歴記録を追加。</li>
           <li><strong>v4.2.4</strong> -
