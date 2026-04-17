@@ -28,7 +28,9 @@ function photo_purchase_handle_multi_checkout()
 
     // Shipping info
     $shipping_zip = isset($_POST['shipping_zip']) ? sanitize_text_field($_POST['shipping_zip']) : '';
+    $shipping_country = isset($_POST['shipping_country']) ? sanitize_text_field($_POST['shipping_country']) : 'JP';
     $shipping_pref = isset($_POST['shipping_pref']) ? sanitize_text_field($_POST['shipping_pref']) : '';
+    $shipping_state = isset($_POST['shipping_state']) ? sanitize_text_field($_POST['shipping_state']) : '';
     $shipping_address = isset($_POST['shipping_address']) ? sanitize_textarea_field($_POST['shipping_address']) : '';
 
     if (empty($cart_data)) {
@@ -64,6 +66,12 @@ function photo_purchase_handle_multi_checkout()
         wp_die('データダウンロード商品が含まれる場合は、代金引換はご利用いただけません。クレジットカードまたは銀行振込を選択してください。', '支払い方法のエラー', array('response' => 400, 'back_link' => true));
     }
 
+    // New: Block Cash on Delivery (COD) for international orders
+    $enable_intl = get_option('photo_pp_enable_international_shipping', '0');
+    if ($enable_intl === '1' && $payment_method === 'cod' && $shipping_country !== 'JP') {
+        wp_die('申し訳ありませんが、代金引換は国内発送のみご利用いただけます。クレジットカードまたは銀行振込を選択してください。', '支払い方法のエラー', array('response' => 400, 'back_link' => true));
+    }
+
     // Server-side validation: physical items require address (exclude digital and subscription)
     $has_physical_items = false;
     foreach ($cart_data as $item) {
@@ -81,11 +89,14 @@ function photo_purchase_handle_multi_checkout()
         }
     }
     if ($has_physical_items) {
-        if (empty($shipping_zip) || empty($shipping_pref) || empty($shipping_address)) {
-            wp_die('配送が必要な商品が含まれています。お届け先（郵便番号・都道府県・住所）を入力してください。', '入力エラー', array(
-                'back_link' => true,
-                'response'  => 400,
-            ));
+        if ($shipping_country === 'JP') {
+            if (empty($shipping_zip) || empty($shipping_pref) || empty($shipping_address)) {
+                wp_die('配送が必要な商品が含まれています。お届け先（郵便番号・都道府県・住所）を入力してください。', '入力エラー', array('back_link' => true, 'response' => 400));
+            }
+        } else {
+            if (empty($shipping_zip) || empty($shipping_country) || empty($shipping_state) || empty($shipping_address)) {
+                wp_die('配送が必要な商品が含まれています。お届け先（郵便番号・国名・州名・住所）を入力してください。', '入力エラー', array('back_link' => true, 'response' => 400));
+            }
         }
     }
 
@@ -103,7 +114,8 @@ function photo_purchase_handle_multi_checkout()
         ),
         'shipping' => array(
             'zip' => $shipping_zip,
-            'pref' => $shipping_pref,
+            'country' => $shipping_country,
+            'pref' => ($shipping_country === 'JP') ? $shipping_pref : $shipping_state,
             'address' => $shipping_address,
         ),
         'method' => $payment_method,
@@ -116,6 +128,7 @@ function photo_purchase_handle_multi_checkout()
     if ($current_user_id) {
         update_user_meta($current_user_id, 'billing_phone', $order_data['buyer']['phone']);
         update_user_meta($current_user_id, 'billing_postcode', $order_data['shipping']['zip']);
+        update_user_meta($current_user_id, 'billing_country', $order_data['shipping']['country']);
         update_user_meta($current_user_id, 'billing_state', $order_data['shipping']['pref']);
         
         // We split the single address textarea into address_1 for simplicity/WooCommerce compatibility if needed, 
@@ -269,11 +282,43 @@ function photo_purchase_handle_multi_checkout()
 
         // Add shipping if physical items
         if ($has_physical_items) {
-            $flat_rate = intval(get_option('photo_pp_shipping_flat_rate', '0'));
-            $free_threshold = intval(get_option('photo_pp_shipping_free_threshold', '0'));
-            $pref_rates = get_option('photo_pp_shipping_prefecture_rates', array());
-            $pref = $shipping_pref;
-            $shipping_fee = ($free_threshold > 0 && $total_amount >= $free_threshold) ? 0 : (($pref && isset($pref_rates[$pref])) ? intval($pref_rates[$pref]) : $flat_rate);
+            $shipping_fee = 0;
+            $enable_intl = get_option('photo_pp_enable_international_shipping', '0');
+
+            if ($shipping_country === 'JP') {
+                $flat_rate = intval(get_option('photo_pp_shipping_flat_rate', '0'));
+                $free_threshold = intval(get_option('photo_pp_shipping_free_threshold', '0'));
+                $pref_rates = get_option('photo_pp_shipping_prefecture_rates', array());
+                $pref = $shipping_pref;
+                $shipping_fee = ($free_threshold > 0 && $total_amount >= $free_threshold) ? 0 : (($pref && isset($pref_rates[$pref])) ? intval($pref_rates[$pref]) : $flat_rate);
+            } else if ($enable_intl === '1') {
+                // International Shipping Fee
+                $intl_rates = get_option('photo_pp_international_shipping_rates', array());
+                $exclude_free = get_option('photo_pp_international_shipping_exclude_free', '0');
+                $free_threshold = intval(get_option('photo_pp_shipping_free_threshold', '0'));
+
+                $is_free = ($exclude_free !== '1' && $free_threshold > 0 && $total_amount >= $free_threshold);
+
+                if ($is_free) {
+                    $shipping_fee = 0;
+                } else {
+                    $found_rate = false;
+                    if (is_array($intl_rates)) {
+                        foreach ($intl_rates as $r) {
+                            if ($r['country'] === $shipping_country) {
+                                $shipping_fee = intval($r['rate']);
+                                $found_rate = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!$found_rate) {
+                        $shipping_fee = intval(get_option('photo_pp_shipping_flat_rate', '0'));
+                    }
+                }
+            } else {
+                wp_die('申し訳ございませんが、現在海外への配送は承っておりません。');
+            }
 
             if ($shipping_fee > 0) {
                 $shipping_item = array(

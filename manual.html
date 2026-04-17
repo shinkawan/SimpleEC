@@ -319,7 +319,7 @@
   <header>
     <h1>🛒シンプルECプラグイン</h1>
     <p>写真・デジタル・物販まで対応し、SKU管理・会員割引・かご落ち対策・インボイス対応などを備えた高機能ECプラグイン。Stripe、PayPay、代引き、銀行振込に対応。</p>
-    <div class="version-badge">v4.2.4</div>
+    <div class="version-badge">v5.0.0</div>
   </header>
 
   <div class="container">
@@ -351,13 +351,14 @@
         <li><a href="#stock-alert">20. 在庫アラート機能</a></li>
         <li><a href="#deep-link">21. ディープリンク機能（特定商品への直リンク） [v3.11.3]</a></li>
         <li><a href="#abandoned-cart">22. かご落ちリカバリー機能（自動リマインド） [v4.0.0]</a></li>
-        <li><a href="#shortcodes">23. 利用可能なショートコード一覧</a></li>
-        <li><a href="#membership-terms">24. 会員規約の表示・自動生成</a></li>
-        <li><a href="#security">25. セキュリティと信頼性</a></li>
-        <li><a href="#faq">26. よくある質問</a></li>
-        <li><a href="#changelog">27. アップデート履歴</a></li>
-        <li style="margin-top:10px; font-weight:700; color:#e11d48;"><span class="badge"
-            style="background:#ffe4e6; color:#e11d48;">NEW</span> <a href="#sku-management">SKU別在庫管理の設定ガイド</a></li>
+        <li><a href="#international-shipping">23. 国際配送の設定と管理 [v5.0.0]</a></li>
+        <li><a href="#shortcodes">24. 利用可能なショートコード一覧</a></li>
+        <li><a href="#membership-terms">25. 会員規約の表示・自動生成</a></li>
+        <li><a href="#security">26. セキュリティと信頼性</a></li>
+        <li><a href="#faq">27. よくある質問</a></li>
+        <li><a href="#changelog">28. アップデート履歴</a></li>
+        <li style="margin-top:10px; font-weight:700; color:#4f46e5;"><span class="badge"
+            style="background:#e0e7ff; color:#4f46e5;">NEW</span> <a href="#international-shipping">国際配送対応の設定ガイド</a></li>
       </ul>
     </nav>
 
@@ -491,7 +492,7 @@
         </tr>
 
         <tr>
-          <td rowspan="4"><strong>送料設定</strong></td>
+          <td rowspan="6"><strong>送料設定</strong></td>
           <td>全国一律送料 / 無料しきい値</td>
           <td>基本となる送料と、「1万円以上で送料無料」などの金額を設定します。</td>
         </tr>
@@ -501,7 +502,11 @@
         </tr>
         <tr>
           <td>都道府県別料金設定</td>
-          <td>特定の都道府県だけ送料を変える設定です（詳細は後述）。</td>
+          <td>日本国内の都道府県ごとに送料を細かく設定できます。</td>
+        </tr>
+        <tr>
+          <td>国際配送設定 [v5.0.0]</td>
+          <td><strong>海外発送の有効化</strong>、および<strong>国別の送料</strong>を設定できます。「海外を送料無料の対象外とする」オプションも完備。</td>
         </tr>
         <tr>
           <td>各決済の手数料説明</td>
@@ -1249,10 +1254,50 @@
         </div>
       </section>
 
+      <!-- 23. 国際配送の設定と管理 -->
+      <section id="international-shipping">
+        <h2>23. 国際配送の設定と管理 [v5.0.0]</h2>
+        <p>日本国内だけでなく、世界各国への配送に対応するための設定と運用方法について説明します。</p>
 
-      <!-- 23. 利用可能なショートコード一覧 -->
+        <div class="card">
+          <h4>⚙️ 設定方法</h4>
+          <ol style="padding-left:20px; font-size:0.95rem;">
+            <li><strong>各種設定 → 送料設定</strong> タブを開きます。</li>
+            <li>「海外への発送を有効にする」にチェックを入れます。</li>
+            <li><strong>国別送料設定テーブル</strong>で、発送先の国名と送料を入力し「行を追加」して設定を保存します。</li>
+            <li><strong>送料無料の除外設定</strong>: 「海外発送を送料無料の対象外とする」にチェックを入れると、国内向けの設定（例: 1万円以上で送料無料）に関わらず、海外発送には必ず設定した送料が適用されます。</li>
+          </ol>
+        </div>
+
+        <div class="card">
+          <h4>🛒 購入者側の体験（チェックアウト）</h4>
+          <ul style="padding-left:20px; font-size:0.95rem;">
+            <li><strong>国選択</strong>: 支払い画面に「国名」セレクトボックスが表示されます。</li>
+            <li><strong>動的な入力欄</strong>: 「日本」以外を選択すると、都道府県の選択肢が消え、代わりに「州 / 地域 (State/Region)」の自由入力欄が表示されます。バリデーション（必須チェック）も自動で切り替わります。</li>
+            <li><strong>支払い方法の制限</strong>: 海外発送が選択された場合、<strong>代金引換（代引き）は自動的に選択肢から除外</strong>されます。万が一、不正な方法で選択された場合も、サーバー側で決済をブロックする安全設計となっています。</li>
+            <li><strong>通貨の明記</strong>: すべての決済は日本円 (JPY) で行われる旨の注釈が表示されます。</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h4>📦 管理者側の運用とリファイン</h4>
+          <ul style="padding-left:20px; font-size:0.95rem;">
+            <li><strong>受注一覧のバッジ</strong>: 海外からの注文には <strong>[国名コード]</strong> （例: <code>[US]</code>）の目立つバッジが表示され、国内注文と瞬時に判別できます。</li>
+            <li><strong>住所フォーマットの自動切替</strong>: メール通知や受注詳細、納品書などの住所欄が、その国に最適な並び順（海外なら「住所 → 州 → 郵便番号 → 国名」）に自動で組み替えられます。</li>
+            <li><strong>注文編集</strong>: 管理画面からの注文編集でも、国名に応じた入力欄の動的切り替えが適用されます。</li>
+            <li><strong>運用アドバイス (銀行振込)</strong>: 海外からの送金手数料は国内と異なるため、各種設定の「各種決済の手数料説明」などに「海外からの送金手数料はお客様負担」である旨や、必要に応じてSWIFTコードなどの案内を追記しておくことを推奨します。</li>
+          </ul>
+        </div>
+
+        <div class="alert alert-warning">
+          ⚠️ <strong>Stripe決済の安全性</strong>: フロントエンド（ブラウザ）で算出された送料は参考用とし、実際の決済金額はサーバー側で再計算されます。これにより、悪意のあるユーザーによる送料の改ざんを完全に防止しています。
+        </div>
+      </section>
+
+
+      <!-- 24. 利用可能なショートコード一覧 -->
       <section id="shortcodes">
-        <h2>23. 利用可能なショートコード一覧</h2>
+        <h2>24. 利用可能なショートコード一覧</h2>
         <p>固定ページや投稿の本文に貼り付けて使用します。</p>
         <table>
           <tr>
@@ -1298,9 +1343,9 @@
         </table>
       </section>
 
-      <!-- 24. 会員規約の表示・自動生成 -->
+      <!-- 25. 会員規約の表示・自動生成 -->
       <section id="membership-terms">
-        <h2>24. 会員規約の表示・自動生成</h2>
+        <h2>25. 会員規約の表示・自動生成</h2>
         <p>オンラインショップ運営に欠かせない会員規約を、簡単に管理・表示できる機能です。</p>
 
         <div class="card">
@@ -1327,9 +1372,9 @@
         </div>
       </section>
 
-      <!-- 25. セキュリティと信頼性 -->
+      <!-- 26. セキュリティと信頼性 -->
       <section id="security">
-        <h2>25. セキュリティと信頼性</h2>
+        <h2>26. セキュリティと信頼性</h2>
         <div class="card">
           <p>本プラグインは商用利用を前提として、以下のセキュリティ対策を講じています。</p>
           <ul style="padding-left:20px;">
@@ -1341,9 +1386,9 @@
         </div>
       </section>
 
-      <!-- 26. よくある質問 -->
+      <!-- 27. よくある質問 -->
       <section id="faq">
-        <h2>26. よくある質問</h2>
+        <h2>27. よくある質問</h2>
 
         <div class="card">
           <h4>Q. 購入者からメールが届いていないと言われた</h4>
@@ -1379,10 +1424,12 @@
         </div>
       </section>
 
-      <!-- 27. アップデート履歴 -->
+      <!-- 28. アップデート履歴 -->
       <section id="changelog">
-        <h2>27. アップデート履歴</h2>
+        <h2>28. アップデート履歴</h2>
         <ul>
+          <li><strong>v5.0.0</strong> -
+            国際配送に正式対応。国別送料設定、受注一覧の国名バッジ表示、国に応じた住所フォーマット切り替え（メール・帳票）、管理画面での動的注文編集、Stripeチェックアウト時のサーバーサイド送料再計算などを実装。</li>
           <li><strong>v4.2.5</strong> - かご落ちリカバリー機能の不具合修正（JSエラー、タイムゾーン判定）。Stripe /
             PayPay決済時のSKU商品価格反映漏れを修正。システムログへの送信履歴記録を追加。</li>
           <li><strong>v4.2.4</strong> -
@@ -1403,7 +1450,7 @@
   </div>
 
   <footer>
-    <p>シンプルECプラグイン v4.2.5 &nbsp;|&nbsp; 管理マニュアル</p>
+    <p>シンプルECプラグイン v5.0.0 &nbsp;|&nbsp; 管理マニュアル</p>
   </footer>
 
 </body>

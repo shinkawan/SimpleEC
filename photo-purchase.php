@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Simple EC
  * Description: 写真・デジタル・物販まで対応し、SKU管理・会員割引・かご落ち対策・インボイス対応などを備えた高機能ECプラグイン。Stripe、PayPay、代引き、銀行振込に対応。
- * Version: 4.2.5
+ * Version: 5.0.0
  * Author: アートフレア株式会社
  * Author URI: https://www.artflair.co.jp/
  * Text Domain: photo-purchase
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define constants
-define('PHOTO_PURCHASE_VERSION', '4.2.5');
+define('PHOTO_PURCHASE_VERSION', '5.0.0');
 define('PHOTO_PURCHASE_PATH', plugin_dir_path(__FILE__));
 define('PHOTO_PURCHASE_URL', plugin_dir_url(__FILE__));
 
@@ -573,6 +573,22 @@ function photo_purchase_settings_page()
 			update_option('photo_pp_shipping_international', sanitize_text_field($_POST['international_shipping']));
 			update_option('photo_pp_payment_fee_desc', sanitize_textarea_field($_POST['payment_fee_desc']));
 
+			// International Shipping Settings
+			update_option('photo_pp_enable_international_shipping', isset($_POST['enable_international_shipping']) ? '1' : '0');
+			update_option('photo_pp_international_shipping_exclude_free', isset($_POST['intl_shipping_exclude_free']) ? '1' : '0');
+
+			$intl_rates = [];
+			if (isset($_POST['intl_rates']) && is_array($_POST['intl_rates'])) {
+				foreach ($_POST['intl_rates'] as $row) {
+					$country = isset($row['country']) ? sanitize_text_field($row['country']) : '';
+					$rate = isset($row['rate']) ? intval($row['rate']) : 0;
+					if ($country !== '') {
+						$intl_rates[] = ['country' => $country, 'rate' => $rate];
+					}
+				}
+			}
+			update_option('photo_pp_international_shipping_rates', $intl_rates);
+
 			$pref_rates = [];
 			if (isset($_POST['pref_rates']) && is_array($_POST['pref_rates'])) {
 				foreach ($_POST['pref_rates'] as $pref => $rate) {
@@ -890,10 +906,23 @@ function photo_purchase_settings_page()
 								class="large-text"></td>
 					</tr>
 					<tr>
-						<th><label for="international_shipping"><?php _e('海外発送の可否', 'photo-purchase'); ?></label></th>
+						<th><label for="international_shipping"><?php _e('海外発送の可否(案内用テキスト)', 'photo-purchase'); ?></label></th>
 						<td><input type="text" name="international_shipping" id="international_shipping"
 								value="<?php echo esc_attr(get_option('photo_pp_shipping_international', '配送は日本国内のみとさせていただきます。')); ?>"
 								class="large-text"></td>
+					</tr>
+					<tr>
+						<th><?php _e('海外発送機能', 'photo-purchase'); ?></th>
+						<td>
+							<label>
+								<input type="checkbox" name="enable_international_shipping" value="1" <?php checked(get_option('photo_pp_enable_international_shipping'), '1'); ?>>
+								<?php _e('海外発送を有効にする', 'photo-purchase'); ?>
+							</label><br>
+							<label>
+								<input type="checkbox" name="intl_shipping_exclude_free" value="1" <?php checked(get_option('photo_pp_international_shipping_exclude_free'), '1'); ?>>
+								<?php _e('海外発送を送料無料の対象外とする', 'photo-purchase'); ?>
+							</label>
+						</td>
 					</tr>
 					<tr>
 						<th><label for="payment_fee_desc"><?php _e('各決済方法の手数料について', 'photo-purchase'); ?></label></th>
@@ -902,6 +931,56 @@ function photo_purchase_settings_page()
 						</td>
 					</tr>
 				</table>
+
+				<h3 class="title"><?php _e('海外送料設定', 'photo-purchase'); ?></h3>
+				<p class="description"><?php _e('海外発送を有効にした場合に選択可能になる国と、その送料を設定します。', 'photo-purchase'); ?></p>
+				<table class="wp-list-table widefat fixed striped" id="intl-shipping-rates-table">
+					<thead>
+						<tr>
+							<th><?php _e('国名 (またはリージョン名)', 'photo-purchase'); ?></th>
+							<th><?php _e('送料 (円)', 'photo-purchase'); ?></th>
+							<th style="width: 100px;"><?php _e('操作', 'photo-purchase'); ?></th>
+						</tr>
+					</thead>
+					<tbody id="intl-rates-tbody">
+						<?php
+						$intl_rates = get_option('photo_pp_international_shipping_rates', []);
+						if (empty($intl_rates)) {
+							$intl_rates = []; // Ensure it's an array
+						}
+						foreach ($intl_rates as $index => $row):
+						?>
+							<tr>
+								<td><input type="text" name="intl_rates[<?php echo $index; ?>][country]" value="<?php echo esc_attr($row['country']); ?>" class="regular-text" placeholder="例: アメリカ"></td>
+								<td><input type="number" name="intl_rates[<?php echo $index; ?>][rate]" value="<?php echo esc_attr($row['rate']); ?>" class="small-text"> 円</td>
+								<td><button type="button" class="button remove-intl-row"><?php _e('削除', 'photo-purchase'); ?></button></td>
+							</tr>
+						<?php endforeach; ?>
+					</tbody>
+					<tfoot>
+						<tr>
+							<td colspan="3"><button type="button" class="button" id="add-intl-row"><?php _e('+ 国を追加', 'photo-purchase'); ?></button></td>
+						</tr>
+					</tfoot>
+				</table>
+
+				<script>
+				jQuery(document).ready(function($) {
+					var rowIdx = <?php echo count($intl_rates); ?>;
+					$('#add-intl-row').on('click', function() {
+						var html = '<tr>' +
+							'<td><input type="text" name="intl_rates[' + rowIdx + '][country]" value="" class="regular-text" placeholder="国名を入力"></td>' +
+							'<td><input type="number" name="intl_rates[' + rowIdx + '][rate]" value="0" class="small-text"> 円</td>' +
+							'<td><button type="button" class="button remove-intl-row">削除</button></td>' +
+							'</tr>';
+						$('#intl-rates-tbody').append(html);
+						rowIdx++;
+					});
+					$(document).on('click', '.remove-intl-row', function() {
+						$(this).closest('tr').remove();
+					});
+				});
+				</script>
 
 				<h3 class="title"><?php _e('都道府県別料金設定', 'photo-purchase'); ?></h3>
 				<p class="description"><?php _e('特定の都道府県のみ送料を変えたい場合に入力してください。空欄の場合は一律送料が適用されます。', 'photo-purchase'); ?></p>

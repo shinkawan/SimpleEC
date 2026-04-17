@@ -69,4 +69,25 @@ jQuery(document).ready(function ($) {
         var allChecked = $('input[name="order_ids[]"]:not(:checked)').length === 0;
         $('#cb-select-all-1, #cb-select-all-2').prop('checked', allChecked);
     });
+
+    // --- International Shipping Refinements: Order Edit Screen ---
+    function updateAdminShippingFields() {
+        var $countrySelect = $('select[name="shipping_country"]');
+        if ($countrySelect.length === 0) return;
+
+        var country = $countrySelect.val();
+        var $prefRow = $('.shipping-pref-row');
+        var $stateRow = $('.shipping-state-row');
+
+        if (country === 'JP') {
+            $prefRow.show().find('select').prop('required', true);
+            $stateRow.hide().find('input').prop('required', false);
+        } else {
+            $prefRow.hide().find('select').prop('required', false);
+            $stateRow.show().find('input').prop('required', true);
+        }
+    }
+
+    $(document).on('change', 'select[name="shipping_country"]', updateAdminShippingFields);
+    updateAdminShippingFields(); // Initial run
 });

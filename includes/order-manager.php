@@ -33,6 +33,25 @@ function photo_purchase_calculate_cod_fee($total_amount)
 }
 
 /**
+ * Format shipping address based on country
+ */
+function photo_purchase_format_address($shipping)
+{
+    $country = $shipping['country'] ?? 'JP';
+    $zip = $shipping['zip'] ?? '';
+    $pref = $shipping['pref'] ?? '';
+    $address = $shipping['address'] ?? '';
+
+    if ($country === 'JP') {
+        // Japanese format: Zip -> Prefecture -> Address
+        return "〒{$zip}\n{$pref}\n{$address}";
+    } else {
+        // International format: Address -> Prefecture/State -> Zip -> Country
+        return "{$address}\n{$pref}\n{$zip}\n{$country}";
+    }
+}
+
+/**
  * Save Order to Database
  */
 function photo_purchase_save_order($order_token, &$order_data)
@@ -148,15 +167,48 @@ function photo_purchase_save_order($order_token, &$order_data)
     // Shipping calculation
     $shipping_fee = 0;
     if ($has_physical) {
-        $flat_rate = intval(get_option('photo_pp_shipping_flat_rate', '500'));
-        $free_threshold = intval(get_option('photo_pp_shipping_free_threshold', '5000'));
-        $pref_rates = get_option('photo_pp_shipping_prefecture_rates', array());
+        $shipping_country = $order_data['shipping']['country'] ?? 'JP';
         $pref = $order_data['shipping']['pref'] ?? '';
+        $enable_intl = get_option('photo_pp_enable_international_shipping', '0');
 
-        if ($free_threshold > 0 && $items_amount >= $free_threshold) {
-            $shipping_fee = 0;
+        if ($shipping_country === 'JP') {
+            $flat_rate = intval(get_option('photo_pp_shipping_flat_rate', '500'));
+            $free_threshold = intval(get_option('photo_pp_shipping_free_threshold', '5000'));
+            $pref_rates = get_option('photo_pp_shipping_prefecture_rates', array());
+            
+            if ($free_threshold > 0 && $items_amount >= $free_threshold) {
+                $shipping_fee = 0;
+            } else {
+                $shipping_fee = ($pref && isset($pref_rates[$pref])) ? intval($pref_rates[$pref]) : $flat_rate;
+            }
+        } else if ($enable_intl === '1') {
+            // International Shipping Fee
+            $intl_rates = get_option('photo_pp_international_shipping_rates', array());
+            $exclude_free = get_option('photo_pp_international_shipping_exclude_free', '0');
+            $free_threshold = intval(get_option('photo_pp_shipping_free_threshold', '5000'));
+
+            $is_free = ($exclude_free !== '1' && $free_threshold > 0 && $items_amount >= $free_threshold);
+
+            if ($is_free) {
+                $shipping_fee = 0;
+            } else {
+                $found_rate = false;
+                if (is_array($intl_rates)) {
+                    foreach ($intl_rates as $r) {
+                        if ($r['country'] === $shipping_country) {
+                            $shipping_fee = intval($r['rate']);
+                            $found_rate = true;
+                            break;
+                        }
+                    }
+                }
+                if (!$found_rate) {
+                    $shipping_fee = intval(get_option('photo_pp_shipping_flat_rate', '500'));
+                }
+            }
         } else {
-            $shipping_fee = ($pref && isset($pref_rates[$pref])) ? intval($pref_rates[$pref]) : $flat_rate;
+            // Fallback for domestic logic if international is disabled
+            $shipping_fee = intval(get_option('photo_pp_shipping_flat_rate', '500'));
         }
     }
 
@@ -215,7 +267,11 @@ function photo_purchase_save_order($order_token, &$order_data)
     // Defensive: If shipping data is missing from array but present in POST (safety fallback)
     if (empty($shipping_data['address']) && isset($_POST['shipping_address'])) {
         $shipping_data['zip'] = sanitize_text_field($_POST['shipping_zip'] ?? '');
+        $shipping_data['country'] = sanitize_text_field($_POST['shipping_country'] ?? 'JP');
         $shipping_data['pref'] = sanitize_text_field($_POST['shipping_pref'] ?? '');
+        if ($shipping_data['country'] !== 'JP') {
+            $shipping_data['pref'] = sanitize_text_field($_POST['shipping_state'] ?? '');
+        }
         $shipping_data['address'] = sanitize_textarea_field($_POST['shipping_address'] ?? '');
     }
     
@@ -403,6 +459,11 @@ function photo_purchase_send_admin_notification($token, $data, $total)
     $message .= "メール: " . $data['buyer']['email'] . "\n";
     $message .= "合計金額: " . number_format($total) . " 円\n";
     $message .= $reg_line;
+
+    if (!empty($data['shipping']['address'])) {
+        $message .= "\n【お届け先情報】\n";
+        $message .= photo_purchase_format_address($data['shipping']) . "\n";
+    }
     
     if (!empty($data['notes'])) {
         $message .= "\n【注文備考】\n" . $data['notes'] . "\n";
@@ -528,6 +589,11 @@ function photo_purchase_send_buyer_notification($token, $data, $total)
 
     $message .= "注文番号: " . $token . "\n";
     $message .= "お支払い合計: " . number_format($total) . " 円\n";
+
+    if (!empty($data['shipping']['address'])) {
+        $message .= "\n【お届け先情報】\n";
+        $message .= photo_purchase_format_address($data['shipping']) . "\n";
+    }
 
     if (!empty($data['notes'])) {
         $message .= "\n【注文備考】\n" . $data['notes'] . "\n";
@@ -871,6 +937,12 @@ function photo_purchase_orders_page()
 
         $shipping_info = $old_shipping;
         $shipping_info['zip'] = sanitize_text_field($_POST['shipping_zip']);
+        $shipping_info['country'] = sanitize_text_field($_POST['shipping_country'] ?? 'JP');
+        if ($shipping_info['country'] === 'JP') {
+            $shipping_info['pref'] = sanitize_text_field($_POST['shipping_pref'] ?? '');
+        } else {
+            $shipping_info['pref'] = sanitize_text_field($_POST['shipping_state'] ?? '');
+        }
         $shipping_info['address'] = isset($_POST['shipping_address']) ? sanitize_textarea_field($_POST['shipping_address']) : ($old_shipping['address'] ?? '');
 
         $stripe_customer_id = sanitize_text_field($_POST['stripe_customer_id'] ?? '');
@@ -1136,8 +1208,12 @@ function photo_purchase_orders_page()
                             </td>
                             <td>
                                 <?php if (!empty($shipping['address'])): ?>
-                                    〒<?php echo esc_html($shipping['zip']); ?><br>
-                                    <?php echo esc_html($shipping['address']); ?>
+                                    <?php 
+                                    $country_code = $shipping['country'] ?? 'JP';
+                                    if ($country_code !== 'JP'): ?>
+                                        <span class="photo-intl-badge"><?php echo esc_html($country_code); ?></span>
+                                    <?php endif; ?>
+                                    <?php echo nl2br(esc_html(photo_purchase_format_address($shipping))); ?>
                                 <?php else:
                                     // サブスク商品かつ配送不要かチェック
                                     $is_sub_shipping = false;
@@ -1411,8 +1487,7 @@ function photo_purchase_orders_page()
                                         <p><strong>メール:</strong> <?php echo esc_html($order->buyer_email); ?></p>
                                         <?php if (!empty($shipping['address'])): ?>
                                             <p><strong>お届け先:</strong><br>
-                                            〒<?php echo esc_html($shipping['zip']); ?><br>
-                                            <?php echo nl2br(esc_html($shipping['address'])); ?></p>
+                                            <?php echo nl2br(esc_html(photo_purchase_format_address($shipping))); ?></p>
                                         <?php endif; ?>
                                         <?php if (!empty($order->order_notes)): ?>
                                             <p><strong>備考:</strong><br><?php echo nl2br(esc_html($order->order_notes)); ?></p>
@@ -1501,7 +1576,43 @@ function photo_purchase_order_edit_view($order_id)
                             value="<?php echo esc_attr($shipping['zip']); ?>" class="regular-text"></td>
                 </tr>
                 <tr>
-                    <th><label for="shipping_address">住所</label></th>
+                    <th><label for="shipping_country">国名</label></th>
+                    <td>
+                        <select name="shipping_country" id="shipping_country" class="regular-text">
+                            <option value="JP" <?php selected($shipping['country'] ?? 'JP', 'JP'); ?>>日本 (Japan)</option>
+                            <?php 
+                            $intl_rates = get_option('photo_pp_international_shipping_rates', []);
+                            if (is_array($intl_rates)):
+                                foreach ($intl_rates as $r):
+                                    echo '<option value="'.esc_attr($r['country']).'" '.selected($shipping['country'] ?? '', $r['country'], false).'>'.esc_html($r['country']).'</option>';
+                                endforeach;
+                            endif;
+                            ?>
+                        </select>
+                    </td>
+                </tr>
+                <tr class="shipping-pref-row">
+                    <th><label for="shipping_pref">都道府県</label></th>
+                    <td>
+                        <select name="shipping_pref" id="shipping_pref" class="regular-text">
+                            <option value="">-- 選択してください --</option>
+                            <?php
+                            $prefectures = ["北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県", "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県", "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県", "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県", "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県"];
+                            foreach ($prefectures as $p) {
+                                echo '<option value="' . esc_attr($p) . '" ' . selected(($shipping['country'] ?? 'JP') === 'JP' ? ($shipping['pref'] ?? '') : '', $p, false) . '>' . esc_html($p) . '</option>';
+                            }
+                            ?>
+                        </select>
+                    </td>
+                </tr>
+                <tr class="shipping-state-row" style="display:none;">
+                    <th><label for="shipping_state">州 / 地域</label></th>
+                    <td>
+                        <input type="text" name="shipping_state" id="shipping_state" value="<?php echo esc_attr(($shipping['country'] ?? 'JP') !== 'JP' ? ($shipping['pref'] ?? '') : ''); ?>" class="regular-text">
+                    </td>
+                </tr>
+                <tr>
+                    <th><label for="shipping_address">市区町村・番地以降</label></th>
                     <td><textarea name="shipping_address" id="shipping_address" rows="3"
                             class="large-text"><?php echo esc_textarea($shipping['address']); ?></textarea></td>
                 </tr>

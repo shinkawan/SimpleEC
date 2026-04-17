@@ -486,6 +486,8 @@ jQuery(document).ready(function ($) {
 
         $('#checkout-footer').show();
         $('#cart_json').val(JSON.stringify(cart));
+        
+        var selectedCountry = $('#shipping_country').val() || 'JP';
 
         var hasPhysical = cart.some(item => {
             if (item.format === 'digital') return false;
@@ -511,9 +513,11 @@ jQuery(document).ready(function ($) {
         }
 
         if (hasPhysical) {
-            $('#shipping-info').show().find('input, textarea, select').prop('required', true);
+            $('#shipping-info').show();
+            // 共通項目を必須に設定
+            $('input[name="shipping_zip"], select[name="shipping_country"], textarea[name="shipping_address"]').prop('required', true);
         } else {
-            $('#shipping-info').hide().find('input, textarea, select').prop('required', false).val('');
+            $('#shipping-info').hide().find('input, textarea, select').prop('required', false).prop('disabled', true).val('');
         }
 
         // 決済方法の表示制御
@@ -526,13 +530,19 @@ jQuery(document).ready(function ($) {
             if (['cod', 'bank_transfer', 'paypay'].includes($('input[name="payment_method"]:checked').val())) {
                 $('input[name="payment_method"][value="stripe"]').prop('checked', true);
             }
+        } else if (selectedCountry !== 'JP') {
+            // 海外：代引きのみ不可。銀行振込やPayPayは一応許可（運用に合わせて）
+            $codOption.hide(); $bankOption.show(); $paypayOption.show();
+            if ($('input[name="payment_method"]:checked').val() === 'cod') {
+                $('input[name="payment_method"]:visible').first().prop('checked', true);
+            }
         } else if (hasDigital) {
             $codOption.hide(); $bankOption.show();
             if ($('input[name="payment_method"]:checked').val() === 'cod') {
                 $('input[name="payment_method"]:visible').first().prop('checked', true);
             }
         } else {
-            $codOption.show(); $bankOption.show();
+            $codOption.show(); $bankOption.show(); $paypayOption.show();
         }
 
         // 引数がない場合は updateCartUI 経由での再実行を待つ
@@ -596,15 +606,38 @@ jQuery(document).ready(function ($) {
 
         if (hasPhysical) {
             var rules = photoPurchase.shipping;
-            if (rules.free_threshold > 0 && itemsTotal >= rules.free_threshold) {
-                shippingFee = 0;
-            } else if (selectedPref) {
-                shippingFee = (rules.pref_rates[selectedPref] !== undefined) ? parseInt(rules.pref_rates[selectedPref], 10) : parseInt(rules.flat_rate, 10);
+
+            if (selectedCountry === 'JP') {
+                if (rules.free_threshold > 0 && itemsTotal >= rules.free_threshold) {
+                    shippingFee = 0;
+                } else if (selectedPref) {
+                    shippingFee = (rules.pref_rates[selectedPref] !== undefined) ? parseInt(rules.pref_rates[selectedPref], 10) : parseInt(rules.flat_rate, 10);
+                } else {
+                    shippingPending = true;
+                }
             } else {
-                shippingPending = true;
+                // International Shipping Logic
+                var isFreeExcluded = (rules.intl_exclude_free === '1' || rules.intl_exclude_free === true);
+                if (!isFreeExcluded && rules.free_threshold > 0 && itemsTotal >= rules.free_threshold) {
+                    shippingFee = 0;
+                } else {
+                    // Find rate for selected country
+                    var intlRate = 0;
+                    var found = false;
+                    if (rules.intl_rates && Array.isArray(rules.intl_rates)) {
+                        rules.intl_rates.forEach(function(r) {
+                            if (r.country === selectedCountry) {
+                                intlRate = parseInt(r.rate, 10);
+                                found = true;
+                            }
+                        });
+                    }
+                    shippingFee = found ? intlRate : parseInt(rules.flat_rate, 10);
+                }
             }
 
-            if (selectedMethod === 'cod') {
+            // Cash on Delivery (COD) Fee Logic - Domestic Only usually
+            if (selectedMethod === 'cod' && selectedCountry === 'JP') {
                 var baseTotal = itemsTotal + shippingFee;
                 var tiers = photoPurchase.shipping.cod_tiers;
                 if (baseTotal < parseInt(tiers.tier1_limit, 10)) {
@@ -647,10 +680,11 @@ jQuery(document).ready(function ($) {
 
         if (hasPhysical) {
             if (shippingPending) {
-                html += '<tr style="background:#fcfcfc;"><td colspan="4" style="padding:10px 20px; text-align:right;">送料</td><td style="padding:10px 20px; text-align:right; color:#999; font-style:italic;">都道府県選択後に表示</td><td></td></tr>';
+                html += '<tr style="background:#fcfcfc;"><td colspan="4" style="padding:10px 20px; text-align:right;">送料</td><td style="padding:10px 20px; text-align:right; color:#999; font-style:italic;">' + (selectedCountry === 'JP' ? '都道府県選択後に表示' : '送料計算中...') + '</td><td></td></tr>';
             } else {
                 var shippingLabel = (shippingFee === 0 && itemsTotal > 0) ? '送料無料' : shippingFee.toLocaleString() + ' 円';
-                html += '<tr style="background:#fcfcfc;"><td colspan="4" style="padding:10px 20px; text-align:right;">送料 (' + selectedPref + ')</td><td style="padding:10px 20px; text-align:right;">' + shippingLabel + '</td><td></td></tr>';
+                var locationLabel = (selectedCountry === 'JP') ? selectedPref : selectedCountry;
+                html += '<tr style="background:#fcfcfc;"><td colspan="4" style="padding:10px 20px; text-align:right;">送料 (' + escapeHtml(locationLabel) + ')</td><td style="padding:10px 20px; text-align:right;">' + shippingLabel + '</td><td></td></tr>';
             }
             if (codFee > 0) {
                 html += '<tr style="background:#fff9e6;"><td colspan="4" style="padding:10px 20px; text-align:right; font-size:0.9rem;">代引き手数料</td><td style="padding:10px 20px; text-align:right; font-size:0.9rem;">' + codFee.toLocaleString() + ' 円</td><td></td></tr>';
@@ -674,6 +708,24 @@ jQuery(document).ready(function ($) {
         $('#cart_json').val(JSON.stringify(cart));
         $('#coupon_info').val(appliedCoupon ? JSON.stringify(appliedCoupon) : '');
     }
+
+    function updateShippingFields() {
+        var country = $('#shipping_country').val() || 'JP';
+        var $prefWrap = $('#pref-wrap');
+        var $stateWrap = $('#state-wrap');
+        var $codOption = $('input[name="payment_method"][value="cod"]').closest('label');
+
+        if (country === 'JP') {
+            $prefWrap.show().find('select').prop('required', true).prop('disabled', false);
+            $stateWrap.hide().find('input').prop('required', false).prop('disabled', true);
+        } else {
+            $prefWrap.hide().find('select').prop('required', false).prop('disabled', true);
+            $stateWrap.show().find('input').prop('required', true).prop('disabled', false);
+        }
+        renderCheckout();
+    }
+
+    $(document).on('change', '#shipping_country', updateShippingFields);
 
     $(document).on('change', '#shipping_pref, input[name="payment_method"]', function () {
         renderCheckout();
@@ -1142,7 +1194,12 @@ jQuery(document).ready(function ($) {
     $('.photo-item').each(function() {
         updateItemSimulator($(this));
     });
-    updateCartUI();
+    
+    if ($('#shipping_country').length) {
+        updateShippingFields();
+    } else {
+        updateCartUI();
+    }
     updateFavUI();
     // マイページ用：カートと独立してお気に入りダッシュボードを初期化
     if ($('#ec-favorites-dashboard-wrapper').length || $('#ec-member-fav-list').length) {

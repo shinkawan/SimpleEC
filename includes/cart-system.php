@@ -29,6 +29,9 @@ function photo_purchase_cart_scripts()
             'flat_rate' => intval(get_option('photo_pp_shipping_flat_rate', '500')),
             'free_threshold' => intval(get_option('photo_pp_shipping_free_threshold', '5000')),
             'pref_rates' => get_option('photo_pp_shipping_prefecture_rates', array()),
+            'enable_international' => get_option('photo_pp_enable_international_shipping', '0'),
+            'intl_exclude_free' => get_option('photo_pp_international_shipping_exclude_free', '0'),
+            'intl_rates' => get_option('photo_pp_international_shipping_rates', array()),
             'cod_tiers' => array(
                 'tier1_limit' => intval(get_option('photo_pp_cod_tier1_limit', '10000')),
                 'tier1_fee' => intval(get_option('photo_pp_cod_tier1_fee', '330')),
@@ -523,12 +526,39 @@ function photo_purchase_checkout_shortcode()
 
             <div id="shipping-info">
                 <h3><?php _e('お届け先情報', 'photo-purchase'); ?></h3>
+                <p class="ec-price-notice" style="font-size: 0.8rem; color: #666; margin-bottom: 15px; background: #f8f9fa; padding: 8px 12px; border-radius: 6px; border-left: 4px solid #0073aa;">
+                    <?php _e('※すべての価格表示は日本円（JPY）です。決済は日本円で行われます。', 'photo-purchase'); ?>
+                </p>
+
+                <?php 
+                $enable_intl = get_option('photo_pp_enable_international_shipping', '0');
+                if ($enable_intl === '1'): 
+                ?>
                 <p>
-                    <label><?php _e('郵便番号', 'photo-purchase'); ?> <span style="color:red;">*</span></label><br>
+                    <label><?php _e('国名 (Country)', 'photo-purchase'); ?> <span style="color:red;">*</span></label><br>
+                    <select name="shipping_country" id="shipping_country" class="ec-form-input">
+                        <option value="JP"><?php _e('日本 (Japan)', 'photo-purchase'); ?></option>
+                        <?php
+                        $intl_rates = get_option('photo_pp_international_shipping_rates', []);
+                        if (is_array($intl_rates)) {
+                            foreach ($intl_rates as $row) {
+                                echo '<option value="' . esc_attr($row['country']) . '">' . esc_html($row['country']) . '</option>';
+                            }
+                        }
+                        ?>
+                    </select>
+                </p>
+                <?php else: ?>
+                    <input type="hidden" name="shipping_country" id="shipping_country" value="JP">
+                <?php endif; ?>
+
+                <p>
+                    <label><?php _e('郵便番号 (Zip / Postcode)', 'photo-purchase'); ?> <span style="color:red;">*</span></label><br>
                     <input type="text" name="shipping_zip" placeholder="123-4567" value="<?php echo esc_attr($u_zip); ?>"
                         class="p-postal-code ec-form-input">
                 </p>
-                <p>
+
+                <p id="pref-wrap">
                     <label><?php _e('都道府県', 'photo-purchase'); ?> <span style="color:red;">*</span></label><br>
                     <select name="shipping_pref" id="shipping_pref" class="p-region ec-form-input">
                         <option value=""><?php _e('-- 選択してください --', 'photo-purchase'); ?></option>
@@ -540,8 +570,14 @@ function photo_purchase_checkout_shortcode()
                         ?>
                     </select>
                 </p>
+
+                <p id="state-wrap" style="display:none;">
+                    <label><?php _e('州 / 地域 (State / Province / Region)', 'photo-purchase'); ?> <span style="color:red;">*</span></label><br>
+                    <input type="text" name="shipping_state" id="shipping_state" value="" class="ec-form-input">
+                </p>
+
                 <p>
-                    <label><?php _e('市区町村・番地', 'photo-purchase'); ?> <span style="color:red;">*</span></label><br>
+                    <label><?php _e('市区町村・番地 (Address)', 'photo-purchase'); ?> <span style="color:red;">*</span></label><br>
                     <textarea name="shipping_address" rows="2" class="p-locality p-street-address p-extended-address ec-form-input"><?php echo esc_textarea($u_addr); ?></textarea>
                 </p>
             </div>
