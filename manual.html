@@ -319,7 +319,7 @@
   <header>
     <h1>🛒シンプルECプラグイン</h1>
     <p>写真・デジタル・物販まで対応し、SKU管理・会員割引・かご落ち対策・インボイス対応などを備えた高機能ECプラグイン。Stripe、PayPay、代引き、銀行振込に対応。</p>
-    <div class="version-badge">v5.0.0</div>
+    <div class="version-badge">v5.1.0</div>
   </header>
 
   <div class="container">
@@ -359,7 +359,7 @@
         <li><a href="#faq">28. よくある質問</a></li>
         <li><a href="#changelog">29. アップデート履歴</a></li>
         <li style="margin-top:10px; font-weight:700; color:#4f46e5;"><span class="badge"
-            style="background:#e0e7ff; color:#4f46e5;">NEW</span> <a href="#csv-bulk-edit">CSV一括管理ガイド</a> / <a href="#international-shipping">国際配送の設定ガイド</a></li>
+            style="background:#e0e7ff; color:#4f46e5;">NEW</span> <a href="#paypal-setup">PayPal連携ガイド</a> / <a href="#csv-bulk-edit">CSV一括管理ガイド</a> / <a href="#international-shipping">国際配送の設定ガイド</a></li>
       </ul>
     </nav>
 
@@ -1477,10 +1477,44 @@
         </div>
       </section>
 
+      <!-- PayPal連携ガイド -->
+      <section id="paypal-setup">
+        <h2>PayPal連携の設定手順</h2>
+        <p>PayPalを用いた決済を有効にするには、PayPal DeveloperダッシュボードからAPI資格情報を取得する必要があります。</p>
+
+        <div class="card">
+          <h4>🔑 APIキーの取得方法</h4>
+          <ol style="padding-left:20px; font-size:0.95rem;">
+            <li><a href="https://developer.paypal.com/" target="_blank">PayPal Developer</a>にログインします。</li>
+            <li>「Apps & Credentials」から新しいREST API Appを作成します。</li>
+            <li>表示された <strong>Client ID</strong> と <strong>Secret</strong> をコピーします。</li>
+            <li>本プラグインの設定画面「決済設定」タブ内のPayPal項目に貼り付けます。</li>
+          </ol>
+        </div>
+
+        <div class="alert alert-info">
+          💡 <strong>Sandboxモードについて</strong>: テスト環境（Sandbox）で動作確認したい場合は、PayPal Developerで作成したSandbox用のキーを使用し、モードを「Sandbox」に設定してください。
+        </div>
+
+        <div class="alert alert-important">
+          ⚠️ <strong>サブスクリプション非対応</strong>: 現バージョンのPayPal連携では「一括払い」のみ対応しています。カートにサブスクリプション商品（継続課金）が含まれている場合、PayPalは選択肢に表示されません。
+        </div>
+
+        <div class="alert alert-info">
+          🔄 <strong>キャンセル時の挙動</strong>: PayPalの決済画面で「キャンセルしてショップに戻る」を選択した場合、注文は確定されず、カートの内容を保持したままチェックアウト画面に戻ります。
+        </div>
+
+        <div class="alert alert-success">
+          ✨ <strong>高信頼なサンクスページ [v5.1.0]</strong>: 決済完了後の画面表示と確定処理を分離する最新の設計（冪等性確保）を採用しています。これにより、万が一ブラウザをリロードしたり、通信が不安定な場合でも、二重決済を防ぎつつ確実に注文詳細が表示され、メールが届くようになっています。
+        </div>
+      </section>
+
       <!-- 29. アップデート履歴 -->
       <section id="changelog">
         <h2>29. アップデート履歴</h2>
         <ul>
+          <li><strong>v5.1.0</strong> -
+            PayPal決済（REST API）に正式対応。日本円（JPY）での一括払いをサポート。</li>
           <li><strong>v5.0.0</strong> -
             国際配送に正式対応。国別送料設定、受注一覧の国名バッジ表示、国に応じた住所フォーマット切り替え（メール・帳票）、管理画面での動的注文編集、Stripeチェックアウト時のサーバーサイド送料再計算などを実装。また、商品データのCSV一括管理機能をリニューアルし、バリエーションや画像URLの自動取得、独自記法による効率的な一括編集に対応しました。</li>
           <li><strong>v4.2.5</strong> - かご落ちリカバリー機能の不具合修正（JSエラー、タイムゾーン判定）。Stripe /
@@ -1503,7 +1537,7 @@
   </div>
 
   <footer>
-    <p>シンプルECプラグイン v5.0.0 &nbsp;|&nbsp; 管理マニュアル</p>
+    <p>シンプルECプラグイン v5.1.0 &nbsp;|&nbsp; 管理マニュアル</p>
   </footer>
 
 </body>

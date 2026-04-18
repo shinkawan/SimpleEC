@@ -551,8 +551,12 @@ function photo_purchase_settings_page()
 			update_option('photo_pp_stripe_webhook_secret', sanitize_text_field($_POST['stripe_webhook_secret']));
 			update_option('photo_pp_enable_stripe', isset($_POST['enable_stripe']) ? '1' : '0');
 			update_option('photo_pp_enable_paypay', isset($_POST['enable_paypay']) ? '1' : '0');
+			update_option('photo_pp_enable_paypal', isset($_POST['enable_paypal']) ? '1' : '0');
 			update_option('photo_pp_enable_bank', isset($_POST['enable_bank']) ? '1' : '0');
 			update_option('photo_pp_enable_cod', isset($_POST['enable_cod']) ? '1' : '0');
+			update_option('photo_pp_paypal_client_id', sanitize_text_field($_POST['paypal_client_id']));
+			update_option('photo_pp_paypal_secret', sanitize_text_field($_POST['paypal_secret']));
+			update_option('photo_pp_paypal_mode', sanitize_text_field($_POST['paypal_mode']));
 			update_option('photo_pp_enable_digital_sales', isset($_POST['enable_digital_sales']) ? '1' : '0');
 			update_option('photo_pp_download_expiry', intval($_POST['download_expiry']));
 			update_option('photo_pp_download_limit', intval($_POST['download_limit']));
@@ -754,6 +758,8 @@ function photo_purchase_settings_page()
 								<?php _e('クレジットカード (Stripe)', 'photo-purchase'); ?></label><br>
 							<label><input type="checkbox" name="enable_paypay" value="1" <?php checked(get_option('photo_pp_enable_paypay', '0'), '1'); ?>>
 								<?php _e('PayPay (Stripe)', 'photo-purchase'); ?></label><br>
+							<label><input type="checkbox" name="enable_paypal" value="1" <?php checked(get_option('photo_pp_enable_paypal', '0'), '1'); ?>>
+								<?php _e('PayPal', 'photo-purchase'); ?></label><br>
 							<label><input type="checkbox" name="enable_bank" value="1" <?php checked(get_option('photo_pp_enable_bank', '1'), '1'); ?>>
 								<?php _e('銀行振込', 'photo-purchase'); ?></label><br>
 							<label><input type="checkbox" name="enable_cod" value="1" <?php checked(get_option('photo_pp_enable_cod', '0'), '1'); ?>>
@@ -840,6 +846,31 @@ function photo_purchase_settings_page()
 								Webhook URL: <code><?php echo esc_url(add_query_arg('photo_purchase_action', 'stripe_webhook', home_url('/'))); ?></code>
 							</p>
 						</td>
+					</tr>
+				</table>
+
+				<h3 class="title"><?php _e('PayPal連携設定', 'photo-purchase'); ?></h3>
+				<table class="form-table">
+					<tr>
+						<th><label for="paypal_mode"><?php _e('動作モード', 'photo-purchase'); ?></label></th>
+						<td>
+							<select name="paypal_mode" id="paypal_mode">
+								<option value="sandbox" <?php selected(get_option('photo_pp_paypal_mode', 'sandbox'), 'sandbox'); ?>>Sandbox (テスト)</option>
+								<option value="live" <?php selected(get_option('photo_pp_paypal_mode', 'sandbox'), 'live'); ?>>Live (本番)</option>
+							</select>
+						</td>
+					</tr>
+					<tr>
+						<th><label for="paypal_client_id"><?php _e('Client ID', 'photo-purchase'); ?></label></th>
+						<td><input type="text" name="paypal_client_id" id="paypal_client_id"
+								value="<?php echo esc_attr(get_option('photo_pp_paypal_client_id', '')); ?>"
+								class="regular-text"></td>
+					</tr>
+					<tr>
+						<th><label for="paypal_secret"><?php _e('Secret Key', 'photo-purchase'); ?></label></th>
+						<td><input type="password" name="paypal_secret" id="paypal_secret"
+								value="<?php echo esc_attr(get_option('photo_pp_paypal_secret', '')); ?>"
+								class="regular-text"></td>
 					</tr>
 				</table>
 

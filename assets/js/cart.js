@@ -524,15 +524,16 @@ jQuery(document).ready(function ($) {
         var $codOption = $('input[name="payment_method"][value="cod"]').closest('label');
         var $bankOption = $('input[name="payment_method"][value="bank_transfer"]').closest('label');
         var $paypayOption = $('input[name="payment_method"][value="paypay"]').closest('label');
+        var $paypalOption = $('input[name="payment_method"][value="paypal"]').closest('label');
 
         if (hasSubscription) {
-            $codOption.hide(); $bankOption.hide(); $paypayOption.hide();
-            if (['cod', 'bank_transfer', 'paypay'].includes($('input[name="payment_method"]:checked').val())) {
+            $codOption.hide(); $bankOption.hide(); $paypayOption.hide(); $paypalOption.hide();
+            if (['cod', 'bank_transfer', 'paypay', 'paypal'].includes($('input[name="payment_method"]:checked').val())) {
                 $('input[name="payment_method"][value="stripe"]').prop('checked', true);
             }
         } else if (selectedCountry !== 'JP') {
             // 海外：代引きのみ不可。銀行振込やPayPayは一応許可（運用に合わせて）
-            $codOption.hide(); $bankOption.show(); $paypayOption.show();
+            $codOption.hide(); $bankOption.show(); $paypayOption.show(); $paypalOption.show();
             if ($('input[name="payment_method"]:checked').val() === 'cod') {
                 $('input[name="payment_method"]:visible').first().prop('checked', true);
             }
@@ -542,7 +543,7 @@ jQuery(document).ready(function ($) {
                 $('input[name="payment_method"]:visible').first().prop('checked', true);
             }
         } else {
-            $codOption.show(); $bankOption.show(); $paypayOption.show();
+            $codOption.show(); $bankOption.show(); $paypayOption.show(); $paypalOption.show();
         }
 
         // 引数がない場合は updateCartUI 経由での再実行を待つ

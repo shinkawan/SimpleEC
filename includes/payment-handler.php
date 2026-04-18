@@ -48,8 +48,8 @@ function photo_purchase_handle_multi_checkout()
     }
 
     if ($has_subscription) {
-        if ($payment_method === 'bank_transfer' || $payment_method === 'cod' || $payment_method === 'paypay') {
-            wp_die('サブスクリプション商品が含まれる場合は、クレジットカード決済のみご利用いただけます（PayPay、銀行振込、代金引換はご利用いただけません）。', '支払い方法のエラー', array('response' => 400, 'back_link' => true));
+        if ($payment_method === 'bank_transfer' || $payment_method === 'cod' || $payment_method === 'paypay' || $payment_method === 'paypal') {
+            wp_die('サブスクリプション商品が含まれる場合は、クレジットカード決済のみご利用いただけます（PayPal、PayPay、銀行振込、代金引換はご利用いただけません）。', '支払い方法のエラー', array('response' => 400, 'back_link' => true));
         }
         
         // v3.2.1: Restriction to a single type of subscription per checkout
@@ -89,13 +89,36 @@ function photo_purchase_handle_multi_checkout()
         }
     }
     if ($has_physical_items) {
+        $shipping_country = trim($shipping_country);
+        $shipping_zip = trim($shipping_zip);
+        $shipping_pref = trim($shipping_pref);
+        $shipping_state = trim($shipping_state);
+        $shipping_address = trim($shipping_address);
+
         if ($shipping_country === 'JP') {
-            if (empty($shipping_zip) || empty($shipping_pref) || empty($shipping_address)) {
-                wp_die('配送が必要な商品が含まれています。お届け先（郵便番号・都道府県・住所）を入力してください。', '入力エラー', array('back_link' => true, 'response' => 400));
+            // Domestic (Japan)
+            if (empty($shipping_zip)) {
+                wp_die('配送が必要な商品が含まれています。郵便番号を入力してください。', '入力エラー', array('back_link' => true, 'response' => 400));
+            }
+            if (empty($shipping_pref)) {
+                wp_die('配送が必要な商品が含まれています。都道府県を選択してください。', '入力エラー', array('back_link' => true, 'response' => 400));
+            }
+            if (empty($shipping_address)) {
+                wp_die('配送が必要な商品が含まれています。住所（市区町村・番地）を入力してください。', '入力エラー', array('back_link' => true, 'response' => 400));
             }
         } else {
-            if (empty($shipping_zip) || empty($shipping_country) || empty($shipping_state) || empty($shipping_address)) {
-                wp_die('配送が必要な商品が含まれています。お届け先（郵便番号・国名・州名・住所）を入力してください。', '入力エラー', array('back_link' => true, 'response' => 400));
+            // International
+            if (empty($shipping_country)) {
+                wp_die('配送が必要な商品が含まれています。国名（Country）を選択してください。', '入力エラー', array('back_link' => true, 'response' => 400));
+            }
+            if (empty($shipping_zip)) {
+                wp_die('配送が必要な商品が含まれています。郵便番号（Zip / Postcode）を入力してください。', '入力エラー', array('back_link' => true, 'response' => 400));
+            }
+            if (empty($shipping_state)) {
+                wp_die('配送が必要な商品が含まれています。州・地域（State / Province / Region）を入力してください。', '入力エラー', array('back_link' => true, 'response' => 400));
+            }
+            if (empty($shipping_address)) {
+                wp_die('配送が必要な商品が含まれています。住所（Address）を入力してください。', '入力エラー', array('back_link' => true, 'response' => 400));
             }
         }
     }
@@ -153,6 +176,158 @@ function photo_purchase_handle_multi_checkout()
         $redirect_base = wp_get_referer() ? wp_get_referer() : home_url('/');
     }
     $redirect_base = remove_query_arg(array('purchase_success', 'payment_pending', 'order_token'), $redirect_base);
+    
+    // --- 【共通】サーバーサイド価格計算 & バリデーション ---
+    $verified_items = array();
+    $items_total_before_discount = 0;
+    $is_subscription_order = false;
+
+    // 会員割引の判定
+    $auth_email = photo_purchase_get_auth_email();
+    $discount_rate = intval(get_option('photo_pp_member_discount_rate', '0'));
+    $apply_member_discount = (!empty($auth_email) && $discount_rate > 0);
+
+    foreach ($cart_data as $item) {
+        $photo_id = intval($item['id']);
+        $format = sanitize_text_field($item['format']);
+        $qty = intval($item['qty']);
+
+        // 1. 基本価格の取得
+        $price_key = ($format === 'l_size') ? '_photo_price_l' : (($format === '2l_size') ? '_photo_price_2l' : '_photo_price_' . $format);
+        if ($format === 'digital') {
+            $price = get_post_meta($photo_id, '_photo_price_digital', true);
+        } elseif ($format === 'subscription') {
+            $price = get_post_meta($photo_id, '_photo_price_subscription', true);
+            $is_subscription_order = true;
+        } else {
+            $price = get_post_meta($photo_id, $price_key, true);
+        }
+
+        // 2. バリエーション価格の反映
+        if (!empty($item['variation_id'])) {
+            $variations = get_post_meta($photo_id, '_photo_variation_skus', true);
+            if (is_array($variations)) {
+                $var = null;
+                if (isset($variations[$item['variation_id']])) {
+                    $var = $variations[$item['variation_id']];
+                } else {
+                    foreach ($variations as $v) {
+                        if (isset($v['variation_id']) && $v['variation_id'] === $item['variation_id']) {
+                            $var = $v; break;
+                        }
+                    }
+                }
+                if ($var && isset($var['price']) && $var['price'] !== '') {
+                    $price = $var['price'];
+                }
+            }
+        }
+
+        // 3. カスタムオプションの計算
+        $opt_price = 0;
+        $resolved_opts = array();
+        if (!empty($item['options']) && is_array($item['options'])) {
+            $db_options = get_post_meta($photo_id, '_photo_custom_options', true);
+            if (!is_array($db_options)) $db_options = array();
+
+            foreach ($item['options'] as $opt) {
+                foreach ($db_options as $db_opt) {
+                    if ($db_opt['name'] === $opt['name']) {
+                        $opt_price += intval($db_opt['price']);
+                        $resolved_opts[] = array(
+                            'name' => $opt['name'],
+                            'group' => $opt['group'] ?? '',
+                            'price' => intval($db_opt['price'])
+                        );
+                        break;
+                    }
+                }
+            }
+        }
+
+        $unit_price_before_discount = intval($price) + $opt_price;
+        $final_unit_price = $unit_price_before_discount;
+
+        // 4. 会員割引の適用
+        if ($apply_member_discount && $format !== 'subscription') {
+            $final_unit_price = floor($final_unit_price * (1 - ($discount_rate / 100)));
+        }
+
+        $verified_items[] = array(
+            'id' => $photo_id,
+            'title' => get_the_title($photo_id),
+            'format' => $format,
+            'format_label' => photo_purchase_get_format_label($format),
+            'variation_id' => $item['variation_id'] ?? '',
+            'variation_name' => $item['variation_name'] ?? '',
+            'unit_price' => $final_unit_price,
+            'qty' => $qty,
+            'options' => $resolved_opts
+        );
+
+        $items_total_before_discount += $final_unit_price * $qty;
+    }
+
+    // 5. クーポンの計算
+    $discount_amount = 0;
+    $applied_coupon_code = '';
+    $applied_coupon_duration = 'once';
+    $applied_coupon_months = null;
+
+    if (!empty($coupon_info)) {
+        $coupon_details = json_decode($coupon_info, true);
+        if ($coupon_details && isset($coupon_details['code'])) {
+            if (function_exists('photo_purchase_get_valid_coupon')) {
+                $coupon = photo_purchase_get_valid_coupon($coupon_details['code'], $items_total_before_discount);
+                if (!is_wp_error($coupon)) {
+                    if ($coupon->discount_type === 'fixed') {
+                        $discount_amount = intval($coupon->discount_amount);
+                    } else {
+                        $discount_amount = floor($items_total_before_discount * ($coupon->discount_amount / 100));
+                    }
+                    $applied_coupon_code = $coupon->code;
+                    $applied_coupon_duration = $coupon->stripe_duration ?? 'once';
+                    $applied_coupon_months = $coupon->stripe_months ?? null;
+                }
+            }
+        }
+    }
+
+    // 6. 送料の計算
+    $shipping_fee = 0;
+    if ($has_physical_items) {
+        $enable_intl = get_option('photo_pp_enable_international_shipping', '0');
+        if ($shipping_country === 'JP') {
+            $flat_rate = intval(get_option('photo_pp_shipping_flat_rate', '0'));
+            $free_threshold = intval(get_option('photo_pp_shipping_free_threshold', '0'));
+            $pref_rates = get_option('photo_pp_shipping_prefecture_rates', array());
+            $shipping_fee = ($free_threshold > 0 && $items_total_before_discount >= $free_threshold) ? 0 : (($shipping_pref && isset($pref_rates[$shipping_pref])) ? intval($pref_rates[$shipping_pref]) : $flat_rate);
+        } else if ($enable_intl === '1') {
+            $intl_rates = get_option('photo_pp_international_shipping_rates', array());
+            $free_threshold = intval(get_option('photo_pp_shipping_free_threshold', '0'));
+            $exclude_free = get_option('photo_pp_international_shipping_exclude_free', '0');
+            $is_free = ($exclude_free !== '1' && $free_threshold > 0 && $items_total_before_discount >= $free_threshold);
+
+            if ($is_free) {
+                $shipping_fee = 0;
+            } else {
+                $found_rate = false;
+                if (is_array($intl_rates)) {
+                    foreach ($intl_rates as $r) {
+                        if ($r['country'] === $shipping_country) {
+                            $shipping_fee = intval($r['rate']); $found_rate = true; break;
+                        }
+                    }
+                }
+                if (!$found_rate) $shipping_fee = intval(get_option('photo_pp_shipping_flat_rate', '0'));
+            }
+        }
+    }
+
+    $final_total_amount = $items_total_before_discount + $shipping_fee - $discount_amount;
+    if ($final_total_amount < 0) $final_total_amount = 0;
+
+    // --- 【共通】ここまで ---
 
     if ($payment_method === 'stripe' || $payment_method === 'paypay') {
         $secret_key = get_option('photo_pp_stripe_secret_key');
@@ -161,196 +336,50 @@ function photo_purchase_handle_multi_checkout()
         }
 
         $line_items = array();
-        $total_amount = 0;
-        $is_subscription_order = false;
+        foreach ($verified_items as $v_item) {
+            $title = $v_item['title'] . ' (' . $v_item['format_label'] . ')';
+            if (!empty($v_item['variation_name'])) $title .= ' - ' . $v_item['variation_name'];
 
-        foreach ($cart_data as $item) {
-            $photo_id = intval($item['id']);
-            $format = sanitize_text_field($item['format']);
-            $qty = intval($item['qty']);
-
-            $price_key = ($format === 'l_size') ? '_photo_price_l' : (($format === '2l_size') ? '_photo_price_2l' : '_photo_price_' . $format);
-            if ($format === 'digital') {
-                $price = get_post_meta($photo_id, '_photo_price_digital', true);
-            } elseif ($format === 'subscription') {
-                $price = get_post_meta($photo_id, '_photo_price_subscription', true);
-                $is_subscription_order = true;
-            } else {
-                $price = get_post_meta($photo_id, $price_key, true);
-            }
-
-            // Variation Logic: Override price if variation_id exists
-            if (!empty($item['variation_id'])) {
-                $variations = get_post_meta($photo_id, '_photo_variation_skus', true);
-                if (is_array($variations)) {
-                    $var = null;
-                    if (isset($variations[$item['variation_id']])) {
-                        $var = $variations[$item['variation_id']];
-                    } else {
-                        // Fallback search for legacy ID-based variations
-                        foreach ($variations as $v) {
-                            if (isset($v['variation_id']) && $v['variation_id'] === $item['variation_id']) {
-                                $var = $v;
-                                break;
-                            }
-                        }
-                    }
-                    if ($var && isset($var['price']) && $var['price'] !== '') {
-                        $price = $var['price'];
-                    }
-                }
-            }
-
-            // Member Discount check
-            $auth_email = photo_purchase_get_auth_email();
-            $discount_rate = intval(get_option('photo_pp_member_discount_rate', '0'));
-            $apply_discount = (!empty($auth_email) && $discount_rate > 0);
-
-            $opt_price = 0;
-            if (!empty($item['options']) && is_array($item['options'])) {
-                $db_options = get_post_meta($photo_id, '_photo_custom_options', true);
-                if (!is_array($db_options)) $db_options = array();
-
-                foreach ($item['options'] as &$opt) {
-                    $found = false;
-                    foreach ($db_options as $db_opt) {
-                        if ($db_opt['name'] === $opt['name']) {
-                            $opt['price'] = intval($db_opt['price']); // Overwrite with server price
-                            $found = true;
-                            break;
-                        }
-                    }
-                    if ($found) {
-                        $opt_price += intval($opt['price']);
-                    } else {
-                        $opt['price'] = 0;
-                    }
-                }
-                unset($opt);
-            }
-            $final_unit_price = intval($price) + $opt_price;
-
-            // Apply member discount
-            if ($apply_discount && $format !== 'subscription') {
-                $final_unit_price = floor($final_unit_price * (1 - ($discount_rate / 100)));
-            }
-
-            $line_items[] = array(
+            $line_item = array(
                 'price_data' => array(
                     'currency' => 'jpy',
-                    'product_data' => array(
-                        'name' => get_the_title($photo_id) . ' (' . photo_purchase_get_format_label($format) . ')',
-                    ),
-                    'unit_amount' => $final_unit_price,
+                    'product_data' => array('name' => $title),
+                    'unit_amount' => $v_item['unit_price'],
                 ),
-                'quantity' => $qty,
+                'quantity' => $v_item['qty'],
             );
 
-            if ($format === 'subscription') {
-                $interval = get_post_meta($photo_id, '_photo_sub_interval', true) ?: 'month';
-                $interval_count = intval(get_post_meta($photo_id, '_photo_sub_interval_count', true)) ?: 1;
-                $recurring_info = array(
-                    'interval' => $interval,
-                    'interval_count' => $interval_count,
-                );
-                $line_items[count($line_items) - 1]['price_data']['recurring'] = $recurring_info;
+            if ($v_item['format'] === 'subscription') {
+                $interval = get_post_meta($v_item['id'], '_photo_sub_interval', true) ?: 'month';
+                $interval_count = intval(get_post_meta($v_item['id'], '_photo_sub_interval_count', true)) ?: 1;
+                $recurring_info = array('interval' => $interval, 'interval_count' => $interval_count);
+                $line_item['price_data']['recurring'] = $recurring_info;
             }
-            $total_amount += $final_unit_price * $qty;
+            $line_items[] = $line_item;
         }
 
-        // Apply Coupon Discount
-        $discount_amount = 0;
-        $applied_coupon_code = '';
-        if (!empty($coupon_info)) {
-            $coupon_details = json_decode($coupon_info, true);
-            if ($coupon_details && isset($coupon_details['code'])) {
-                if (function_exists('photo_purchase_get_valid_coupon')) {
-                    $coupon = photo_purchase_get_valid_coupon($coupon_details['code'], $total_amount);
-                    if (!is_wp_error($coupon)) {
-                        if ($coupon->discount_type === 'fixed') {
-                            $discount_amount = intval($coupon->discount_amount);
-                        } else {
-                            $discount_amount = floor($total_amount * ($coupon->discount_amount / 100));
-                        }
-                        $applied_coupon_code = $coupon->code;
-                        $applied_coupon_duration = $coupon->stripe_duration;
-                        $applied_coupon_months = $coupon->stripe_months;
-                    }
-                }
+        if ($shipping_fee > 0) {
+            $shipping_item = array(
+                'price_data' => array(
+                    'currency' => 'jpy',
+                    'product_data' => array('name' => '送料'),
+                    'unit_amount' => $shipping_fee,
+                ),
+                'quantity' => 1,
+            );
+            if ($is_subscription_order && isset($recurring_info)) {
+                $shipping_item['price_data']['recurring'] = $recurring_info;
             }
+            $line_items[] = $shipping_item;
         }
-
-        // Add shipping if physical items
-        if ($has_physical_items) {
-            $shipping_fee = 0;
-            $enable_intl = get_option('photo_pp_enable_international_shipping', '0');
-
-            if ($shipping_country === 'JP') {
-                $flat_rate = intval(get_option('photo_pp_shipping_flat_rate', '0'));
-                $free_threshold = intval(get_option('photo_pp_shipping_free_threshold', '0'));
-                $pref_rates = get_option('photo_pp_shipping_prefecture_rates', array());
-                $pref = $shipping_pref;
-                $shipping_fee = ($free_threshold > 0 && $total_amount >= $free_threshold) ? 0 : (($pref && isset($pref_rates[$pref])) ? intval($pref_rates[$pref]) : $flat_rate);
-            } else if ($enable_intl === '1') {
-                // International Shipping Fee
-                $intl_rates = get_option('photo_pp_international_shipping_rates', array());
-                $exclude_free = get_option('photo_pp_international_shipping_exclude_free', '0');
-                $free_threshold = intval(get_option('photo_pp_shipping_free_threshold', '0'));
-
-                $is_free = ($exclude_free !== '1' && $free_threshold > 0 && $total_amount >= $free_threshold);
-
-                if ($is_free) {
-                    $shipping_fee = 0;
-                } else {
-                    $found_rate = false;
-                    if (is_array($intl_rates)) {
-                        foreach ($intl_rates as $r) {
-                            if ($r['country'] === $shipping_country) {
-                                $shipping_fee = intval($r['rate']);
-                                $found_rate = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (!$found_rate) {
-                        $shipping_fee = intval(get_option('photo_pp_shipping_flat_rate', '0'));
-                    }
-                }
-            } else {
-                wp_die('申し訳ございませんが、現在海外への配送は承っておりません。');
-            }
-
-            if ($shipping_fee > 0) {
-                $shipping_item = array(
-                    'price_data' => array(
-                        'currency' => 'jpy',
-                        'product_data' => array(
-                            'name' => '送料',
-                        ),
-                        'unit_amount' => $shipping_fee,
-                    ),
-                    'quantity' => 1,
-                );
-                // サブスクリプションの場合は送料も定常課金に含める
-                if ($is_subscription_order && isset($recurring_info)) {
-                    $shipping_item['price_data']['recurring'] = $recurring_info;
-                }
-                $line_items[] = $shipping_item;
-            }
-        }
-
-        // Stripe handles payment, COD is handled separately for Bank Transfer/Offline.
-        // The total_amount is saved via photo_purchase_save_order before this.
 
         // Stripe API Call
-        // Strict Mode: Only show the specific method selected by the user
         if ($payment_method === 'paypay') {
             $payment_types = array('paypay');
         } else {
             $payment_types = array('card');
         }
 
-        // Prepare Stripe Session Args
         $session_args = array(
             'payment_method_types' => $payment_types,
             'line_items' => $line_items,
@@ -372,7 +401,7 @@ function photo_purchase_handle_multi_checkout()
                 'body' => http_build_query(array(
                     'amount_off' => $discount_amount,
                     'currency' => 'jpy',
-                    'duration' => $applied_coupon_duration ?? 'once',
+                    'duration' => $applied_coupon_duration,
                     'duration_in_months' => ($applied_coupon_duration === 'repeating') ? $applied_coupon_months : null,
                     'name' => 'クーポン割引 (' . $applied_coupon_code . ')',
                 )),
@@ -422,11 +451,106 @@ function photo_purchase_handle_multi_checkout()
         } else {
             $error_detail = (isset($body['error']['message'])) ? $body['error']['message'] : 'Unknown error';
             $error_type = (isset($body['error']['type'])) ? $body['error']['type'] : 'unknown';
-            
-            // Log for admin investigation
             error_log("Stripe API Error (" . intval($code) . "): $error_type - $error_detail");
-
             wp_die('Stripe Error: ' . esc_html($error_detail) . ' (Code: ' . intval($code) . ')');
+        }
+
+    } elseif ($payment_method === 'paypal') {
+        // --- PayPal Handling ---
+        $client_id = get_option('photo_pp_paypal_client_id');
+        $secret = get_option('photo_pp_paypal_secret');
+        $mode = get_option('photo_pp_paypal_mode', 'sandbox');
+        $api_base = ($mode === 'live') ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com';
+
+        if (!$client_id || !$secret) wp_die('PayPalのAPI設定が完了していません。');
+
+        // 1. Get Access Token
+        $auth_args = array(
+            'headers' => array(
+                'Authorization' => 'Basic ' . base64_encode($client_id . ':' . $secret),
+                'Content-Type' => 'application/x-www-form-urlencoded',
+            ),
+            'body' => array('grant_type' => 'client_credentials'),
+            'timeout' => 20,
+        );
+        $auth_resp = wp_remote_post($api_base . '/v1/oauth2/token', $auth_args);
+        if (is_wp_error($auth_resp)) wp_die('PayPal Auth Error: ' . $auth_resp->get_error_message());
+        $auth_body = json_decode(wp_remote_retrieve_body($auth_resp), true);
+        $access_token = $auth_body['access_token'] ?? '';
+        if (!$access_token) wp_die('PayPal Access Tokenの取得に失敗しました。');
+
+        // 2. Prepare PayPal Order Items (Verified)
+        $pp_items = array();
+        foreach ($verified_items as $v_item) {
+            $name = $v_item['title'] . ' (' . $v_item['format_label'] . ')';
+            if (!empty($v_item['variation_name'])) $name .= ' - ' . $v_item['variation_name'];
+            
+            $pp_items[] = array(
+                'name' => mb_strimwidth($name, 0, 100, '...'),
+                'unit_amount' => array('currency_code' => 'JPY', 'value' => (string)$v_item['unit_price']),
+                'quantity' => (string)$v_item['qty']
+            );
+        }
+
+        if ($final_total_amount <= 0) {
+            wp_die('合計金額が0円以下のため、PayPal決済をご利用いただけません。他の支払い方法を選択してください。');
+        }
+
+        // 3. Create PayPal Order
+        $order_args = array(
+            'headers' => array(
+                'Authorization' => 'Bearer ' . $access_token,
+                'Content-Type' => 'application/json',
+            ),
+            'body' => json_encode(array(
+                'intent' => 'CAPTURE',
+                'purchase_units' => array(
+                    array(
+                        'reference_id' => $order_token,
+                        'amount' => array(
+                            'currency_code' => 'JPY',
+                            'value' => (string)$final_total_amount,
+                            'breakdown' => array(
+                                'item_total' => array('currency_code' => 'JPY', 'value' => (string)$items_total_before_discount),
+                                'shipping' => array('currency_code' => 'JPY', 'value' => (string)$shipping_fee),
+                                'discount' => array('currency_code' => 'JPY', 'value' => (string)$discount_amount)
+                            )
+                        ),
+                        'items' => $pp_items
+                    )
+                ),
+                'application_context' => array(
+                    'return_url' => add_query_arg(array('paypal_success' => '1', 'order_token' => $order_token), $redirect_base),
+                    'cancel_url' => add_query_arg(array('paypal_status' => 'cancel'), $redirect_base),
+                    'shipping_preference' => 'NO_SHIPPING',
+                    'user_action' => 'PAY_NOW',
+                    'brand_name' => get_option('photo_pp_seller_name')
+                )
+            )),
+            'timeout' => 30,
+        );
+
+        $order_resp = wp_remote_post($api_base . '/v2/checkout/orders', $order_args);
+        if (is_wp_error($order_resp)) wp_die('PayPal Create Order Connection Error: ' . $order_resp->get_error_message());
+        
+        $order_body = json_decode(wp_remote_retrieve_body($order_resp), true);
+        $approval_url = '';
+        if (isset($order_body['links'])) {
+            foreach ($order_body['links'] as $link) {
+                if ($link['rel'] === 'approve') {
+                    $approval_url = $link['href'];
+                    break;
+                }
+            }
+        }
+
+        if ($approval_url) {
+            wp_redirect($approval_url);
+            exit;
+        } else {
+            $error_details = wp_remote_retrieve_body($order_resp);
+            error_log('PayPal Order Creation Failed: ' . $error_details);
+            wp_die('PayPal注文作成に失敗しました。理由: ' . esc_html($error_details));
         }
 
     } else {
@@ -437,6 +561,113 @@ function photo_purchase_handle_multi_checkout()
 }
 add_action('admin_post_photo_purchase_multi_checkout', 'photo_purchase_handle_multi_checkout');
 add_action('admin_post_nopriv_photo_purchase_multi_checkout', 'photo_purchase_handle_multi_checkout');
+
+/**
+ * Handle Payment Capture on Init (Stripe & PayPal)
+ * Separation of Concerns: Backend update vs Frontend display
+ */
+function photo_purchase_handle_payment_capture() {
+    if (!isset($_GET['purchase_success']) && !isset($_GET['paypal_success'])) {
+        return;
+    }
+
+    $token = isset($_GET['order_token']) ? sanitize_text_field($_GET['order_token']) : '';
+    if (!$token) return;
+
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'photo_orders';
+    $current_order = $wpdb->get_row($wpdb->prepare("SELECT status, total_amount, payment_method FROM $table_name WHERE order_token = %s", $token));
+
+    // Idempotency check: process only if pending
+    if (!$current_order || $current_order->status !== 'pending_payment') {
+        return;
+    }
+
+    $transaction_id = '';
+    $customer_id = '';
+    $subscription_id = '';
+    
+    // Direct DB retrieval to avoid undefined function errors during init hook
+    $order_data = null;
+    $db_order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE order_token = %s", $token));
+    if ($db_order) {
+        $order_data = array(
+            'items'    => json_decode($db_order->order_items, true),
+            'buyer'    => array('name' => $db_order->buyer_name, 'email' => $db_order->buyer_email),
+            'shipping' => json_decode($db_order->shipping_info, true),
+            'method'   => $db_order->payment_method,
+            'total_amount' => $db_order->total_amount,
+        );
+    }
+
+    if (!$order_data) return;
+
+    // --- PayPal Specific Capture ---
+    if (isset($_GET['paypal_success']) && $_GET['paypal_success'] === '1') {
+        $paypal_token = isset($_GET['token']) ? sanitize_text_field($_GET['token']) : '';
+        if ($paypal_token) {
+            $client_id = get_option('photo_pp_paypal_client_id');
+            $secret = get_option('photo_pp_paypal_secret');
+            $mode = get_option('photo_pp_paypal_mode', 'sandbox');
+            $api_base = ($mode === 'live') ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com';
+
+            $auth_args = array(
+                'headers' => array('Authorization' => 'Basic ' . base64_encode($client_id . ':' . $secret), 'Content-Type' => 'application/x-www-form-urlencoded'),
+                'body' => array('grant_type' => 'client_credentials'),
+                'timeout' => 20,
+            );
+            $auth_resp = wp_remote_post($api_base . '/v1/oauth2/token', $auth_args);
+            if (!is_wp_error($auth_resp)) {
+                $auth_body = json_decode(wp_remote_retrieve_body($auth_resp), true);
+                $access_token = $auth_body['access_token'] ?? '';
+                if ($access_token) {
+                    $capture_args = array('headers' => array('Authorization' => 'Bearer ' . $access_token, 'Content-Type' => 'application/json'), 'timeout' => 30);
+                    $cap_resp = wp_remote_post($api_base . "/v2/checkout/orders/{$paypal_token}/capture", $capture_args);
+                    if (!is_wp_error($cap_resp)) {
+                        $cap_body = json_decode(wp_remote_retrieve_body($cap_resp), true);
+                        if (($cap_body['status'] ?? '') === 'COMPLETED') {
+                            $transaction_id = $cap_body['purchase_units'][0]['payments']['captures'][0]['id'] ?? $paypal_token;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // --- Stripe Specific Capture ---
+    $session_id = isset($_GET['session_id']) ? sanitize_text_field($_GET['session_id']) : '';
+    if ($session_id) {
+        $secret_key = get_option('photo_pp_stripe_secret_key');
+        $session_resp = wp_remote_get('https://api.stripe.com/v1/checkout/sessions/' . $session_id, array('headers' => array('Authorization' => 'Bearer ' . $secret_key)));
+        if (!is_wp_error($session_resp)) {
+            $session_body = json_decode(wp_remote_retrieve_body($session_resp), true);
+            $transaction_id = $session_body['payment_intent'] ?? '';
+            $customer_id = $session_body['customer'] ?? '';
+            $subscription_id = $session_body['subscription'] ?? '';
+        }
+    }
+
+    // Update Order Status Atomics
+    if ($transaction_id || $subscription_id) {
+        $new_status = $subscription_id ? 'active' : 'processing';
+        $update_data = array('status' => $new_status, 'transaction_id' => $transaction_id);
+        if ($customer_id) $update_data['stripe_customer_id'] = $customer_id;
+        if ($subscription_id) $update_data['stripe_subscription_id'] = $subscription_id;
+
+        $rows_updated = $wpdb->update($table_name, $update_data, array('order_token' => $token, 'status' => 'pending_payment'));
+
+        if ($rows_updated > 0) {
+            // Trigger notifications exactly once if functions are available
+            if (function_exists('photo_purchase_send_admin_notification')) {
+                photo_purchase_send_admin_notification($token, $order_data, $current_order->total_amount);
+            }
+            if (function_exists('photo_purchase_send_buyer_notification')) {
+                photo_purchase_send_buyer_notification($token, $order_data, $current_order->total_amount);
+            }
+        }
+    }
+}
+add_action('init', 'photo_purchase_handle_payment_capture', 20);
 
 /**
  * Get Status HTML - Matches order_token to DB if transient is missing
@@ -479,77 +710,32 @@ function photo_purchase_get_status_html()
     ob_start();
     echo '<div class="purchase-status-wrap" style="max-width:100%; margin:20px 0; padding:40px; background:#fff; border-radius:15px; box-shadow:0 10px 40px rgba(0,0,0,0.1); border: 1px solid #eee;">';
 
-    if (isset($_GET['purchase_success'])) {
-        // Update DB status if coming back from Stripe
-        $table_name = $wpdb->prefix . 'photo_orders';
-        $current_order = $wpdb->get_row($wpdb->prepare("SELECT status, total_amount FROM $table_name WHERE order_token = %s", $token));
-
-        if ($current_order && $current_order->status === 'pending_payment') {
-            // Feature: Save Stripe Transaction ID, Customer ID, and Subscription ID
-            $transaction_id = '';
-            $customer_id = '';
-            $subscription_id = '';
-            $session_id = isset($_GET['session_id']) ? sanitize_text_field($_GET['session_id']) : '';
-            if ($session_id) {
-                $secret_key = get_option('photo_pp_stripe_secret_key');
-                $session_resp = wp_remote_get('https://api.stripe.com/v1/checkout/sessions/' . $session_id, array(
-                    'headers' => array('Authorization' => 'Bearer ' . $secret_key)
-                ));
-                if (!is_wp_error($session_resp)) {
-                    $session_body = json_decode(wp_remote_retrieve_body($session_resp), true);
-                    if (isset($session_body['payment_intent']) && $session_body['payment_intent']) {
-                        $transaction_id = $session_body['payment_intent'];
-                    }
-                    if (isset($session_body['customer']) && $session_body['customer']) {
-                        $customer_id = $session_body['customer'];
-                    }
-                    if (isset($session_body['subscription']) && $session_body['subscription']) {
-                        $subscription_id = $session_body['subscription'];
-                    }
-                }
-            }
-
-            // Atomic update: only send email if this request actually changed the status
-            // This prevents duplicate emails if the user reloads the success page or webhook already ran
-            $new_status = $subscription_id ? 'active' : 'processing';
-            $update_data = array('status' => $new_status);
-            if ($transaction_id) {
-                $update_data['transaction_id'] = $transaction_id;
-            }
-            if ($customer_id) {
-                $update_data['stripe_customer_id'] = $customer_id;
-            }
-            if ($subscription_id) {
-                $update_data['stripe_subscription_id'] = $subscription_id;
-            }
-
-            $rows_updated = $wpdb->update(
-                $table_name,
-                $update_data,
-                array('order_token' => $token, 'status' => 'pending_payment')
-            );
-
-            // Send Confirmation Email only when we were responsible for the status change
-            if ($rows_updated > 0 && function_exists('photo_purchase_send_buyer_notification')) {
-                photo_purchase_send_buyer_notification($token, $order_data, $current_order->total_amount);
-                
-                // Feature: Also notify admin when payment is confirmed
-                if (function_exists('photo_purchase_send_admin_notification')) {
-                    photo_purchase_send_admin_notification($token, $order_data, $current_order->total_amount);
-                }
-            }
-        }
-
+    // Handle PayPal Cancellation Display
+    if (isset($_GET['paypal_status']) && $_GET['paypal_status'] === 'cancel') {
         echo '<div style="text-align:center; margin-bottom:30px;">';
-        echo '<svg viewBox="0 0 24 24" fill="#28a745" width="50" height="50" style="margin-bottom:20px;"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
-        echo '<h2 style="color:#28a745; margin:10px 0;">ご購入ありがとうございます！</h2>';
-        echo '<p style="font-size:1.1rem;">' . esc_html($order_data['buyer']['name']) . ' 様、決済が完了しました。</p>';
+        echo '<svg viewBox="0 0 24 24" fill="#ffb100" width="50" height="50" style="margin-bottom:20px;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>';
+        echo '<h2 style="color:#333; margin:10px 0;">決済がキャンセルされました</h2>';
+        echo '<p style="color:#666;">お支払いは完了していません。もう一度お試しいただくか、別の支払い方法を選択してください。</p>';
+        echo '<a href="' . esc_url(remove_query_arg('paypal_status')) . '" class="button" style="margin-top:20px; display:inline-block;">カートに戻る</a>';
+        echo '</div></div>';
+        return ob_get_clean();
+    }
+
+    if (isset($_GET['purchase_success']) || isset($_GET['paypal_success'])) {
+        echo '<div style="text-align:center; margin-bottom:30px;">';
+        echo '<svg viewBox="0 0 24 24" fill="#28a745" width="60" height="60" style="margin-bottom:20px;"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
+        echo '<h2 style="color:#28a745; margin:10px 0;">ご購入ありがとうございます</h2>';
+        echo '<p style="font-size:1.1rem; color:#666;">' . sprintf(__('%s 様、決済が完了しました。', 'photo-purchase'), esc_html($order_data['buyer']['name'])) . '</p>';
+        echo '</div>';
+        
+        echo '<div style="background:#f8f9fa; padding:15px; border-radius:8px; border:1px solid #eee; margin-bottom:20px; font-size:0.9rem; line-height:1.6;">';
+        echo '<strong>注文番号: ' . esc_html($token) . '</strong><br>';
+        echo '確認メールを送信いたしましたので、ご確認ください。';
         echo '</div>';
 
-        // Items breakdown
-        echo '<div style="margin-top:20px; border-top:1px solid #eee; padding-top:20px;">';
-        echo '<h3>注文詳細:</h3>';
-        echo '<ul style="list-style:none; padding:0;">';
+        echo '<h3 style="border-bottom:2px solid #eee; padding-bottom:10px; margin-bottom:20px;">' . __('ご注文内容', 'photo-purchase') . '</h3>';
+        echo '<ul style="list-style:none; padding:0; margin:0;">';
+
         foreach ($order_data['items'] as $item) {
             $format_label = photo_purchase_get_format_label($item['format']);
             echo '<li style="margin-bottom:10px; padding:15px; border:1px solid #f0f0f0; border-radius:10px; display:flex; justify-content:space-between; align-items:center; background:#fafafa;">';

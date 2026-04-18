@@ -607,6 +607,14 @@ function photo_purchase_checkout_shortcode()
                         </label>
                     <?php endif;
 
+                    if (get_option('photo_pp_enable_paypal', '0') === '1'): ?>
+                        <label class="ec-clickable">
+                            <input type="radio" name="payment_method" value="paypal" <?php checked(!$methods_found); ?>>
+                            <?php $methods_found = true; ?>
+                            <?php _e('PayPal', 'photo-purchase'); ?>
+                        </label>
+                    <?php endif;
+
                     if ($enable_bank === '1'): ?>
                         <label style="cursor: pointer;">
                             <input type="radio" name="payment_method" value="bank_transfer" <?php echo (!$methods_found) ? 'checked' : ''; ?>>

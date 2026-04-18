@@ -409,7 +409,7 @@ function photo_purchase_save_order($order_token, &$order_data)
             }
         }
 
-        $skip_admin_notif = in_array($order_data['method'], array('stripe', 'paypay'));
+        $skip_admin_notif = in_array($order_data['method'], array('stripe', 'paypay', 'paypal'));
         if (!$skip_admin_notif) {
             photo_purchase_send_admin_notification($order_token, $order_data, $total_amount);
         }
