@@ -1295,11 +1295,20 @@ function photo_purchase_settings_page()
 						<td>
 							<?php $delay = get_option('photo_pp_abandoned_cart_delay', '24'); ?>
 							<select name="abandoned_cart_delay" id="abandoned_cart_delay">
+								<option value="0" <?php selected($delay, '0'); ?>><?php _e('0時間後 (即時テスト用 5分経過後)', 'photo-purchase'); ?></option>
 								<option value="3" <?php selected($delay, '3'); ?>><?php _e('3時間後', 'photo-purchase'); ?></option>
 								<option value="24" <?php selected($delay, '24'); ?>><?php _e('24時間後 (推奨)', 'photo-purchase'); ?></option>
 								<option value="48" <?php selected($delay, '48'); ?>><?php _e('48時間後', 'photo-purchase'); ?></option>
 							</select>
-							<p class="description"><?php _e('カートが最後に更新されてから、指定した時間が経過した後にメールを送信します。', 'photo-purchase'); ?></p>
+							<p class="description"><?php _e('カートが最後に更新されてから、指定した時間が経過した後にメールを送信します。<br>※「0時間後」は設定テスト用です。カートにデータを入れてから約5分後に処理対象となります。', 'photo-purchase'); ?></p>
+							
+							<div style="margin-top:20px; padding:15px; background:#fff; border:1px solid #ccc; border-radius:4px; display:inline-block;">
+								<strong>【テスト・手動処理】</strong><br>
+								<p style="margin:5px 0;">次の定期実行を待たずに、現在条件を満たしているかご落ちデータへ即時送信します。</p>
+								<a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=photo_purchase_trigger_abandoned_cart'), 'photo_manual_trigger_abandoned_cart')); ?>" class="button button-secondary">
+									<?php _e('未送信のかご落ちメールを今すぐ処理する', 'photo-purchase'); ?>
+								</a>
+							</div>
 						</td>
 					</tr>
 				</table>
@@ -1378,6 +1387,13 @@ function photo_purchase_settings_page()
 						?>
 					</tbody>
 				</table>
+				
+				<div style="margin-top: 15px; text-align: right;">
+					<a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=photo_purchase_clear_abandoned_carts'), 'photo_clear_abandoned_carts_action')); ?>" class="button button-link-delete" style="color: #dc3232;" onclick="return confirm('<?php _e('本当にかご落ちの履歴データ（待機中のカート含む）をすべて削除しますか？\n※テストが終わった後のみ推奨します。', 'photo-purchase'); ?>');">
+						<?php _e('テスト履歴をすべて消去', 'photo-purchase'); ?>
+					</a>
+				</div>
+
 				<p style="margin-top: 15px;">
 					<a href="<?php echo admin_url('admin.php?page=photo-purchase-logs&log_level=info'); ?>" class="button">詳細なシステムログを確認する</a>
 				</p>

@@ -16,3 +16,6 @@ temp/
 # Sensitive data (backup of DB or logs if any)
 *.log
 *.sql
+
+# Dev environment
+_dev_env/

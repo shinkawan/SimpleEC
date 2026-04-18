@@ -15,7 +15,7 @@ function photo_purchase_schedule_abandoned_cart_cron() {
         wp_schedule_event(time(), 'hourly', 'photo_purchase_abandoned_cart_cron');
     }
 }
-add_action('wp', 'photo_purchase_schedule_abandoned_cart_cron');
+add_action('init', 'photo_purchase_schedule_abandoned_cart_cron');
 
 /**
  * Main Cron Logic: Find and Process Abandoned Carts
@@ -33,9 +33,12 @@ function photo_purchase_process_abandoned_carts() {
     // 1. Find carts that are 'pending', haven't been reminded yet, 
     //    and the last action was between configured delay and delay + 24 hours ago.
     $delay_hours = intval(get_option('photo_pp_abandoned_cart_delay', '24'));
-    if ($delay_hours < 1) $delay_hours = 24;
+    if ($delay_hours < 0) $delay_hours = 24;
 
+    // Allow 0 for immediate testing (internally defaults to 5 minutes to prevent typing collisions)
+    $delay_seconds = ($delay_hours === 0) ? (5 * 60) : ($delay_hours * HOUR_IN_SECONDS);
     $max_delay_hours = $delay_hours + 24; // Don't send reminder for very old carts
+    $max_delay_seconds = $max_delay_hours * HOUR_IN_SECONDS;
 
     $abandoned_carts = $wpdb->get_results($wpdb->prepare(
         "SELECT * FROM $table_name 
@@ -44,11 +47,14 @@ function photo_purchase_process_abandoned_carts() {
          AND unsubscribed = 0 
          AND last_active <= %s 
          AND last_active >= %s",
-        date('Y-m-d H:i:s', current_time('timestamp') - ($delay_hours * HOUR_IN_SECONDS)),
-        date('Y-m-d H:i:s', current_time('timestamp') - ($max_delay_hours * HOUR_IN_SECONDS))
+        date('Y-m-d H:i:s', current_time('timestamp') - $delay_seconds),
+        date('Y-m-d H:i:s', current_time('timestamp') - $max_delay_seconds)
     ));
 
     if (empty($abandoned_carts)) {
+        if (function_exists('photo_purchase_log')) {
+            photo_purchase_log('info', 'かご落ちチェック: 条件に一致する待機中のデータがありませんでした。', array('delay_sec' => $delay_seconds));
+        }
         return;
     }
 
@@ -63,11 +69,19 @@ function photo_purchase_process_abandoned_carts() {
         if ($has_order > 0) {
             // Mark as recovered (manually completed or handled elsewhere)
             $wpdb->update($table_name, array('status' => 'recovered'), array('id' => $cart->id));
+            if (function_exists('photo_purchase_log')) {
+                photo_purchase_log('info', 'かご落ちチェック: この操作の後に購入が完了しているためスキップしました。', array('email' => $cart->email));
+            }
             continue;
         }
 
         // 3. Send the recovery email
-        if (photo_purchase_send_recovery_email($cart)) {
+        $sent = photo_purchase_send_recovery_email($cart);
+        if (!$sent) {
+            if (function_exists('photo_purchase_log')) {
+                photo_purchase_log('error', 'かご落ちメール送信失敗: サーバーのメール送信関数(wp_mail)がエラーを返しました。メール設定を確認してください。', array('email' => $cart->email));
+            }
+        } else {
             // 4. Update reminder count and sent timestamp
             $wpdb->update($table_name, array(
                 'reminder_sent_count' => 1,
@@ -194,3 +208,51 @@ function photo_purchase_handle_unsubscribe() {
     );
 }
 add_action('init', 'photo_purchase_handle_unsubscribe');
+
+/**
+ * Handle Manual Trigger of Abandoned Cart Processing (For Admin Testing)
+ */
+function photo_purchase_manual_trigger_abandoned_cart() {
+    if (!current_user_can('manage_options')) {
+        wp_die('権限がありません。');
+    }
+    check_admin_referer('photo_manual_trigger_abandoned_cart');
+    
+    photo_purchase_process_abandoned_carts();
+    
+    wp_safe_redirect(add_query_arg(array('post_type' => 'photo_product', 'page' => 'photo-purchase-settings', 'tab' => 'abandoned_cart', 'pp_notice' => 'cron_triggered'), admin_url('edit.php')));
+    exit;
+}
+add_action('admin_post_photo_purchase_trigger_abandoned_cart', 'photo_purchase_manual_trigger_abandoned_cart');
+
+/**
+ * Handle admin notice for abandoned cart manual trigger
+ */
+add_action('admin_notices', function () {
+    if (!isset($_GET['page']) || $_GET['page'] !== 'photo-purchase-settings') return;
+    if (isset($_GET['pp_notice']) && $_GET['pp_notice'] === 'cron_triggered') {
+        echo '<div class="updated notice is-dismissible"><p>かご落ちメールのキューを手動で処理しました。</p></div>';
+    }
+    if (isset($_GET['pp_notice']) && $_GET['pp_notice'] === 'carts_cleared') {
+        echo '<div class="updated notice is-dismissible"><p>かご落ちのテスト履歴・データをすべて消去しました。</p></div>';
+    }
+});
+
+/**
+ * Handle clear abandoned carts history
+ */
+function photo_purchase_clear_abandoned_carts_handler() {
+    if (!current_user_can('manage_options')) {
+        wp_die('権限がありません。');
+    }
+    check_admin_referer('photo_clear_abandoned_carts_action');
+    
+    global $wpdb;
+    $wpdb->query("TRUNCATE TABLE {$wpdb->prefix}photo_abandoned_carts");
+    
+    wp_safe_redirect(add_query_arg(array('post_type' => 'photo_product', 'page' => 'photo-purchase-settings', 'tab' => 'abandoned_cart', 'pp_notice' => 'carts_cleared'), admin_url('edit.php')));
+    exit;
+}
+add_action('admin_post_photo_purchase_clear_abandoned_carts', 'photo_purchase_clear_abandoned_carts_handler');
+
+
