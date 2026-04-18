@@ -627,9 +627,18 @@ function photo_purchase_handle_payment_capture() {
                         $cap_body = json_decode(wp_remote_retrieve_body($cap_resp), true);
                         if (($cap_body['status'] ?? '') === 'COMPLETED') {
                             $transaction_id = $cap_body['purchase_units'][0]['payments']['captures'][0]['id'] ?? $paypal_token;
+                        } else {
+                            $err = json_encode($cap_body);
+                            error_log("PayPal Capture Failed for order $token: $err");
                         }
+                    } else {
+                        error_log("PayPal Capture Connection Error for order $token: " . $cap_resp->get_error_message());
                     }
+                } else {
+                    error_log("PayPal Auth Token missing for order $token. Check Client ID/Secret.");
                 }
+            } else {
+                error_log("PayPal OAuth Connection Error for order $token: " . $auth_resp->get_error_message());
             }
         }
     }
