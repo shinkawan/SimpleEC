@@ -21,10 +21,10 @@ function photo_purchase_handle_multi_checkout()
         wp_die('セキュリティエラー：不正なリクエストです。ページを再読み込みしてください。');
     }
 
-    $cart_data = json_decode(stripslashes($_POST['cart_json']), true);
-    $buyer_name = sanitize_text_field($_POST['buyer_name']);
-    $buyer_email = sanitize_email($_POST['buyer_email']);
-    $payment_method = sanitize_text_field($_POST['payment_method']);
+    $cart_data = isset($_POST['cart_json']) ? json_decode(stripslashes($_POST['cart_json']), true) : array();
+    $buyer_name = isset($_POST['buyer_name']) ? sanitize_text_field($_POST['buyer_name']) : '';
+    $buyer_email = isset($_POST['buyer_email']) ? sanitize_email($_POST['buyer_email']) : '';
+    $payment_method = isset($_POST['payment_method']) ? sanitize_text_field($_POST['payment_method']) : '';
 
     // Shipping info
     $shipping_zip = isset($_POST['shipping_zip']) ? sanitize_text_field($_POST['shipping_zip']) : '';
@@ -133,7 +133,7 @@ function photo_purchase_handle_multi_checkout()
         'buyer' => array(
             'name' => $buyer_name,
             'email' => $buyer_email,
-            'phone' => sanitize_text_field($_POST['buyer_phone']),
+            'phone' => isset($_POST['buyer_phone']) ? sanitize_text_field($_POST['buyer_phone']) : '',
         ),
         'shipping' => array(
             'zip' => $shipping_zip,
@@ -579,7 +579,7 @@ function photo_purchase_handle_payment_capture() {
     $current_order = $wpdb->get_row($wpdb->prepare("SELECT status, total_amount, payment_method FROM $table_name WHERE order_token = %s", $token));
 
     // Idempotency check: process only if pending
-    if (!$current_order || $current_order->status !== 'pending_payment') {
+    if (!$current_order || !isset($current_order->status) || $current_order->status !== 'pending_payment') {
         return;
     }
 
@@ -600,7 +600,7 @@ function photo_purchase_handle_payment_capture() {
         );
     }
 
-    if (!$order_data) return;
+    if (!$order_data || !$current_order) return;
 
     // --- PayPal Specific Capture ---
     if (isset($_GET['paypal_success']) && $_GET['paypal_success'] === '1') {
@@ -666,12 +666,15 @@ function photo_purchase_handle_payment_capture() {
         $rows_updated = $wpdb->update($table_name, $update_data, array('order_token' => $token, 'status' => 'pending_payment'));
 
         if ($rows_updated > 0) {
+            // Re-fetch total to be absolutely sure for notifications
+            $final_amount = isset($current_order->total_amount) ? $current_order->total_amount : 0;
+            
             // Trigger notifications exactly once if functions are available
             if (function_exists('photo_purchase_send_admin_notification')) {
-                photo_purchase_send_admin_notification($token, $order_data, $current_order->total_amount);
+                photo_purchase_send_admin_notification($token, $order_data, $final_amount);
             }
             if (function_exists('photo_purchase_send_buyer_notification')) {
-                photo_purchase_send_buyer_notification($token, $order_data, $current_order->total_amount);
+                photo_purchase_send_buyer_notification($token, $order_data, $final_amount);
             }
         }
     }
