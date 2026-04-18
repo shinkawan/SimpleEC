@@ -486,7 +486,7 @@ function photo_purchase_handle_multi_checkout()
             if (!empty($v_item['variation_name'])) $name .= ' - ' . $v_item['variation_name'];
             
             $pp_items[] = array(
-                'name' => mb_strimwidth($name, 0, 100, '...'),
+                'name' => photo_purchase_safe_trim($name, 100),
                 'unit_amount' => array('currency_code' => 'JPY', 'value' => (string)$v_item['unit_price']),
                 'quantity' => (string)$v_item['qty']
             );
@@ -899,4 +899,16 @@ function photo_purchase_create_portal_session($customer_id)
 
     $body = json_decode(wp_remote_retrieve_body($response), true);
     return $body['url'] ?? false;
+}
+
+/**
+ * Safe Truncate for multibyte strings (environment independent)
+ */
+function photo_purchase_safe_trim($text, $length = 100) {
+    if (function_exists('mb_strimwidth')) {
+        return mb_strimwidth($text, 0, $length, '...');
+    }
+    // Fallback if mbstring is missing
+    if (strlen($text) <= $length) return $text;
+    return substr($text, 0, $length - 3) . '...';
 }
