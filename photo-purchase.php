@@ -182,6 +182,7 @@ function photo_purchase_register_post_type()
 		'publicly_queryable' => false,
 		'show_ui' => true,
 		'show_in_menu' => true,
+		'show_in_rest' => true,
 		'query_var' => true,
 		'capability_type' => 'post',
 		'has_archive' => false,
