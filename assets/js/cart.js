@@ -372,11 +372,17 @@ jQuery(document).ready(function ($) {
 
     // --- クイックビュー / ライトボックス ---
     $(document).on('click', '.lightbox-trigger', function () {
+        var $item = $(this).closest('.photo-item');
+        var photoId = $item.data('id');
+        var isSoldOut = $item.data('sold-out') == '1';
+        var title = $item.find('h3').text();
+        var description = $item.data('description');
         var gallery = $item.data('gallery');
         var sku = $item.data('sku');
         
         $('#lightbox-img').attr('src', gallery[0]);
         $('#ec-quickview-title').text(title);
+        $('#ec-quickview-description').html(description);
         
         var $qvSku = $('#ec-quickview-sku');
         if (sku) {
