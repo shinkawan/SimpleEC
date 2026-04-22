@@ -360,6 +360,7 @@ function photo_purchase_add_product_columns($columns) {
 		if ($key === 'title') {
 			$new_columns['photo_price'] = '販売価格';
 			$new_columns['photo_stock'] = '在庫';
+			$new_columns['photo_sku'] = '商品コード';
 		}
 	}
 	$new_columns['photo_order'] = '順序'; // Drag handle column
@@ -396,6 +397,10 @@ function photo_purchase_render_product_columns($column, $post_id) {
 		case 'photo_order':
 			echo '<span class="dashicons dashicons-move photo-drag-handle" style="cursor:move; color:#ccc;"></span>';
 			echo '<input type="hidden" class="photo-item-id" value="' . $post_id . '">';
+			break;
+		case 'photo_sku':
+			$sku = get_post_meta($post_id, '_photo_sku', true);
+			echo $sku ? esc_html($sku) : '-';
 			break;
 	}
 }

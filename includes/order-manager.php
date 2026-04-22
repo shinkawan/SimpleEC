@@ -91,6 +91,10 @@ function photo_purchase_save_order($order_token, &$order_data)
             $has_physical = true;
         }
 
+        // Capture SKU (Snapshot)
+        $item_sku = get_post_meta($item['id'], '_photo_sku', true);
+        $item['sku'] = $item_sku ?: '';
+
         // Variation Logic: Override price if variation_id exists
         if (!empty($item['variation_id'])) {
             $variations = get_post_meta($item['id'], '_photo_variation_skus', true);
@@ -111,6 +115,9 @@ function photo_purchase_save_order($order_token, &$order_data)
                 if ($var) {
                     if (isset($var['price']) && $var['price'] !== '') {
                         $price = $var['price'];
+                    }
+                    if (isset($var['sku']) && $var['sku'] !== '') {
+                        $item['sku'] = $var['sku'];
                     }
                     $item['variation_name'] = $var['name'] ?? ''; // Ensure name is in item array
                 }
@@ -493,8 +500,9 @@ function photo_purchase_send_admin_notification($token, $data, $total)
         $items_subtotal += ($price + $opt_p) * $qty;
         $fmt_label = photo_purchase_get_format_label($format);
         $var_label = !empty($item['variation_name']) ? " (" . $item['variation_name'] . ")" : "";
+        $sku_label = !empty($item['sku']) ? " [SKU: " . $item['sku'] . "]" : "";
         
-        $message .= get_the_title($photo_id) . $var_label . "\n";
+        $message .= get_the_title($photo_id) . $var_label . $sku_label . "\n";
         $message .= "形式: " . $fmt_label . " / 数量: " . $qty . "\n";
         if ($opt_list) $message .= $opt_list;
         $message .= "\n";
@@ -639,8 +647,9 @@ function photo_purchase_send_buyer_notification($token, $data, $total)
         $items_subtotal += ($price + $opt_p) * $qty;
         $fmt_label = photo_purchase_get_format_label($format);
         $var_label = !empty($item['variation_name']) ? " (" . $item['variation_name'] . ")" : "";
+        $sku_label = !empty($item['sku']) ? " [SKU: " . $item['sku'] . "]" : "";
         
-        $message .= get_the_title($photo_id) . $var_label . "\n";
+        $message .= get_the_title($photo_id) . $var_label . $sku_label . "\n";
         $message .= "形式: " . $fmt_label . " / 数量: " . $qty . "\n";
         if ($opt_list) $message .= $opt_list;
         $message .= "\n";
@@ -1717,6 +1726,9 @@ function photo_purchase_order_edit_view($order_id)
                                             <?php if (!empty($item['variation_name'])): ?>
                                                 <span style="color:#2563eb;"> [<?php echo esc_html($item['variation_name']); ?>]</span>
                                             <?php endif; ?>
+                                            <?php if (!empty($item['sku'])): ?>
+                                                <span style="color:#666; font-size:12px;"> (SKU: <?php echo esc_html($item['sku']); ?>)</span>
+                                            <?php endif; ?>
                                         </div>
                                         <div style="color:#666; font-size:13px;">形式: <?php echo photo_purchase_get_format_label($item['format']); ?> / 数量: <?php echo esc_html($item['qty']); ?></div>
                                         <?php if (!empty($item['options']) && is_array($item['options'])): ?>
@@ -2183,6 +2195,7 @@ function photo_purchase_order_print_view($order_id, $type, $order_token = '')
                         <tr>
                             <td>
                                 <?php echo get_the_title($photo_id); ?> (<?php echo photo_purchase_get_format_label($format); ?>)
+                                <?php if (!empty($item['sku'])) echo '<br><small style="color:#333; font-weight:bold;">SKU: ' . esc_html($item['sku']) . '</small>'; ?>
                                 <?php if ($opt_names) echo '<br><small style="color:#666;">詳細: ' . esc_html(ltrim($opt_names, ' / ')) . '</small>'; ?>
                             </td>
                             <td style="text-align:right;">￥<?php echo number_format($unit_price); ?></td>

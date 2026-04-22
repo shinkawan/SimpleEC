@@ -372,16 +372,18 @@ jQuery(document).ready(function ($) {
 
     // --- クイックビュー / ライトボックス ---
     $(document).on('click', '.lightbox-trigger', function () {
-        var $item = $(this).closest('.photo-item');
-        var photoId = $item.data('id');
-        var isSoldOut = $item.data('sold-out') == '1';
-        var title = $item.find('h3').text();
-        var description = $item.data('description');
         var gallery = $item.data('gallery');
+        var sku = $item.data('sku');
         
         $('#lightbox-img').attr('src', gallery[0]);
         $('#ec-quickview-title').text(title);
-        $('#ec-quickview-description').html(description);
+        
+        var $qvSku = $('#ec-quickview-sku');
+        if (sku) {
+            $qvSku.text('SKU: ' + sku).show();
+        } else {
+            $qvSku.hide();
+        }
         
         var $qvBtn = $('#ec-quickview-add-to-cart');
         $qvBtn.data('id', photoId);
@@ -814,9 +816,18 @@ jQuery(document).ready(function ($) {
         var $varSelect = $item.find('.ec-variation-select');
         
         if ($varMultiInput.length && $varMultiInput.data('current-v')) {
-            varPrice = parseInt($varMultiInput.data('current-v').price, 10) || 0;
+            var vData = $varMultiInput.data('current-v');
+            varPrice = parseInt(vData.price, 10) || 0;
+            if (vData.sku && $('#ec-quickview-sku').length) {
+                $('#ec-quickview-sku').text('SKU: ' + vData.sku).show();
+            }
         } else if ($varSelect.length) {
-            varPrice = parseInt($varSelect.find('option:selected').data('price'), 10) || 0;
+            var $selectedVar = $varSelect.find('option:selected');
+            varPrice = parseInt($selectedVar.data('price'), 10) || 0;
+            var vSku = $selectedVar.data('sku');
+            if (vSku && $('#ec-quickview-sku').length) {
+                $('#ec-quickview-sku').text('SKU: ' + vSku).show();
+            }
         }
 
         var extra = 0;

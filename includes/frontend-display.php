@@ -296,6 +296,7 @@ function photo_purchase_gallery_shortcode($atts)
                 ?>
                 <div class="photo-item <?php echo $is_sold_out ? 'is-sold-out' : ''; ?>" data-id="<?php echo $post_id; ?>" 
                      data-description="<?php echo esc_attr($description); ?>"
+                     data-sku="<?php echo esc_attr(get_post_meta($post_id, '_photo_sku', true)); ?>"
                      data-gallery='<?php echo $gallery_data; ?>'
                      data-sold-out="<?php echo $is_sold_out ? '1' : '0'; ?>"
                      data-manage-stock="<?php echo $manage_stock ? '1' : '0'; ?>"
@@ -492,6 +493,7 @@ function photo_purchase_gallery_shortcode($atts)
                     </div>
                     <div class="ec-quickview-right">
                         <h2 id="ec-quickview-title"></h2>
+                        <div id="ec-quickview-sku" class="ec-quickview-sku" style="font-size: 0.85rem; color: #666; margin-bottom: 10px;"></div>
                         <div id="ec-quickview-description" class="ec-quickview-description prose"></div>
                         
                         <div class="ec-quickview-meta">

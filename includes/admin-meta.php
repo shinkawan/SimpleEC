@@ -34,6 +34,7 @@ function photo_purchase_meta_box_callback($post)
 	$price_digital = get_post_meta($post->ID, '_photo_price_digital', true);
 	$price_l = get_post_meta($post->ID, '_photo_price_l', true);
 	$price_2l = get_post_meta($post->ID, '_photo_price_2l', true);
+	$sku = get_post_meta($post->ID, '_photo_sku', true);
 
 	$enable_digital = get_option('photo_pp_enable_digital_sales', '1');
 
@@ -53,6 +54,12 @@ function photo_purchase_meta_box_callback($post)
 	$gallery_ids = get_post_meta($post->ID, '_ec_gallery_ids', true);
 
 	echo '<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;">';
+
+	echo '<div>';
+	echo '<label for="photo_sku"><strong>' . __('商品(SKU)コード', 'photo-purchase') . '</strong></label><br>';
+	echo '<input type="text" id="photo_sku" name="photo_sku" value="' . esc_attr($sku) . '" style="width:100%;" placeholder="ITEM-001">';
+	echo '<p class="description">管理用の商品コードを設定します。</p>';
+	echo '</div>';
 
 	if ($enable_digital === '1') {
 		echo '<div>';
@@ -601,6 +608,9 @@ function photo_purchase_save_meta($post_id)
 
 	if (isset($_POST['photo_price_digital'])) {
 		update_post_meta($post_id, '_photo_price_digital', sanitize_text_field($_POST['photo_price_digital']));
+	}
+	if (isset($_POST['photo_sku'])) {
+		update_post_meta($post_id, '_photo_sku', sanitize_text_field($_POST['photo_sku']));
 	}
 	if (isset($_POST['photo_price_l'])) {
 		update_post_meta($post_id, '_photo_price_l', sanitize_text_field($_POST['photo_price_l']));

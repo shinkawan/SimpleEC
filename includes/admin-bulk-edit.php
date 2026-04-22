@@ -74,6 +74,7 @@ function photo_purchase_handle_export_products_csv()
         'カテゴリー',
         '商品説明',
         'サムネイルURL',
+        '商品コード(SKU)',
         'DL価格',
         '配送品価格(L)',
         '税率区分(standard/reduced)',
@@ -149,6 +150,7 @@ function photo_purchase_handle_export_products_csv()
             $category_str,
             $p->post_content,
             $thumb_url,
+            get_post_meta($p->ID, '_photo_sku', true),
             isset($meta['_photo_price_digital'][0]) ? $meta['_photo_price_digital'][0] : 0,
             isset($meta['_photo_price_l'][0]) ? $meta['_photo_price_l'][0] : 0,
             isset($meta['_photo_tax_type'][0]) ? $meta['_photo_tax_type'][0] : 'standard',
@@ -295,16 +297,17 @@ function photo_purchase_handle_import_products_csv()
         }
 
         // Meta Updates
-        update_post_meta($post_id, '_photo_price_digital', intval($data[5] ?? 0));
-        update_post_meta($post_id, '_photo_price_l', intval($data[6] ?? 0));
-        update_post_meta($post_id, '_photo_tax_type', sanitize_text_field($data[7] ?? 'standard'));
-        update_post_meta($post_id, '_photo_is_sold_out', ($data[8] == '1' ? '1' : '0'));
-        update_post_meta($post_id, '_photo_manage_stock', ($data[9] == '1' ? '1' : '0'));
-        update_post_meta($post_id, '_photo_stock_qty', intval($data[10] ?? 0));
-        update_post_meta($post_id, '_photo_is_subscription', ($data[13] == '1' ? '1' : '0'));
-        update_post_meta($post_id, '_photo_price_subscription', intval($data[14] ?? 0));
-        update_post_meta($post_id, '_photo_sub_interval', sanitize_text_field($data[15] ?? 'month'));
-        update_post_meta($post_id, '_photo_sub_interval_count', max(1, intval($data[16] ?? 1)));
+        update_post_meta($post_id, '_photo_sku', sanitize_text_field($data[5] ?? ''));
+        update_post_meta($post_id, '_photo_price_digital', intval($data[6] ?? 0));
+        update_post_meta($post_id, '_photo_price_l', intval($data[7] ?? 0));
+        update_post_meta($post_id, '_photo_tax_type', sanitize_text_field($data[8] ?? 'standard'));
+        update_post_meta($post_id, '_photo_is_sold_out', (($data[9] ?? '') == '1' ? '1' : '0'));
+        update_post_meta($post_id, '_photo_manage_stock', (($data[10] ?? '') == '1' ? '1' : '0'));
+        update_post_meta($post_id, '_photo_stock_qty', intval($data[11] ?? 0));
+        update_post_meta($post_id, '_photo_is_subscription', (($data[14] ?? '') == '1' ? '1' : '0'));
+        update_post_meta($post_id, '_photo_price_subscription', intval($data[15] ?? 0));
+        update_post_meta($post_id, '_photo_sub_interval', sanitize_text_field($data[16] ?? 'month'));
+        update_post_meta($post_id, '_photo_sub_interval_count', max(1, intval($data[17] ?? 1)));
 
         // Category Sync
         if (!empty($data[2])) {
@@ -335,9 +338,9 @@ function photo_purchase_handle_import_products_csv()
         }
 
         // SKU Parser
-        if (!empty($data[11])) {
+        if (!empty($data[12])) {
             $variations = array();
-            $sku_blocks = explode('|', $data[11]);
+            $sku_blocks = explode('|', $data[12]);
             foreach ($sku_blocks as $idx => $block) {
                 $parts = explode('=', $block);
                 if (count($parts) < 2) continue;
@@ -370,9 +373,9 @@ function photo_purchase_handle_import_products_csv()
         }
 
         // Options Parser (Also enhanced with universal logic)
-        if (!empty($data[12])) {
+        if (!empty($data[13])) {
             $options = array();
-            $opt_blocks = explode('|', $data[12]);
+            $opt_blocks = explode('|', $data[13]);
             foreach ($opt_blocks as $block) {
                 $parts = explode('=', $block);
                 if (count($parts) < 2) continue;
