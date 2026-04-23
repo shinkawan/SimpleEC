@@ -1882,17 +1882,15 @@ function photo_purchase_order_print_view($order_id, $type, $order_token = '')
                 line-height: 1.6;
                 margin: 0;
                 padding: 0;
-                background: #f4f4f4;
+                background: #fff;
                 -webkit-print-color-adjust: exact;
             }
 
             .container {
-                max-width: 800px;
-                margin: 40px auto;
+                width: 100%;
+                margin: 0;
                 background: #fff;
-                padding: 40px;
-                box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
-                min-height: 1000px;
+                padding: 30px;
                 position: relative;
                 box-sizing: border-box;
             }
@@ -2016,8 +2014,6 @@ function photo_purchase_order_print_view($order_id, $type, $order_token = '')
             html, body {
                 margin: 0;
                 padding: 0;
-                height: 100vh;
-                width: 100vw;
             }
             #loading-screen {
                 display: flex;
@@ -2045,7 +2041,9 @@ function photo_purchase_order_print_view($order_id, $type, $order_token = '')
             @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
             /* Original print container is hidden by the fixed loading screen overlay */
             #print-wrap {
-                visibility: hidden;
+                position: absolute;
+                top: -9999px;
+                left: -9999px;
             }
         </style>
     </head>
