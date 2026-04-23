@@ -1,7 +1,7 @@
 jQuery(document).ready(function($) {
     var sortList = $('#the-list');
     if (sortList.length > 0 && $('body').hasClass('post-type-photo_product')) {
-        console.log('Simple EC Sortable initialized');
+
         
         sortList.sortable({
             items: 'tr',
@@ -33,7 +33,7 @@ jQuery(document).ready(function($) {
                     if (id) order.push(id);
                 });
 
-                console.log('New order:', order);
+
 
                 $('.photo-drag-handle').addClass('dashicons-update spin').removeClass('dashicons-move');
 
@@ -49,7 +49,7 @@ jQuery(document).ready(function($) {
                     success: function(response) {
                         $('.photo-drag-handle').removeClass('dashicons-update spin').addClass('dashicons-move');
                         if (response.success) {
-                            console.log('Order saved successfully');
+
                         } else {
                             alert('並び替えの保存に失敗しました。');
                         }

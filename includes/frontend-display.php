@@ -30,6 +30,14 @@ function photo_purchase_gallery_shortcode($atts)
     $search_query = isset($_GET['ec_search']) ? sanitize_text_field($_GET['ec_search']) : '';
     // Category slug (ec_cat or event_slug)
     $event_slug = isset($_GET['ec_cat']) ? sanitize_text_field($_GET['ec_cat']) : (isset($_GET['event_slug']) ? sanitize_text_field($_GET['event_slug']) : $default_cat);
+    
+    // Auto-detect from taxonomy archive
+    if (empty($event_slug) && is_tax('photo_event')) {
+        $queried_object = get_queried_object();
+        if ($queried_object && isset($queried_object->slug)) {
+            $event_slug = $queried_object->slug;
+        }
+    }
     // Sort
     $sort = isset($_GET['ec_sort']) ? sanitize_text_field($_GET['ec_sort']) : 'newness';
 
@@ -297,6 +305,7 @@ function photo_purchase_gallery_shortcode($atts)
                 <div class="photo-item <?php echo $is_sold_out ? 'is-sold-out' : ''; ?>" data-id="<?php echo $post_id; ?>" 
                      data-description="<?php echo esc_attr($description); ?>"
                      data-sku="<?php echo esc_attr(get_post_meta($post_id, '_photo_sku', true)); ?>"
+                     data-url="<?php echo esc_url(get_permalink($post_id)); ?>"
                      data-gallery='<?php echo $gallery_data; ?>'
                      data-sold-out="<?php echo $is_sold_out ? '1' : '0'; ?>"
                      data-manage-stock="<?php echo $manage_stock ? '1' : '0'; ?>"
@@ -335,7 +344,7 @@ function photo_purchase_gallery_shortcode($atts)
                             <?php endif; ?>
                         </div>
                     <?php endif; ?>
-                    <h3><?php the_title(); ?></h3>
+                    <h3 style="margin:15px 0 10px; font-size:1.1rem; line-height:1.4;"><a href="<?php the_permalink(); ?>" style="text-decoration:none; color:inherit;"><?php the_title(); ?></a></h3>
 
                     <?php if (!$use_variations): ?>
                         <div class="format-selection" style="margin-bottom: 10px;">
@@ -520,10 +529,14 @@ function photo_purchase_gallery_shortcode($atts)
                             <!-- Options will be cloned from .photo-item by JS -->
                         </div>
 
-                        <div class="ec-quickview-actions" style="margin-top: 25px;">
-                            <button id="ec-quickview-add-to-cart" class="add-to-cart-btn">
+                        <div class="ec-quickview-actions" style="margin-top: 25px; display:flex; gap:10px;">
+                            <button id="ec-quickview-add-to-cart" class="add-to-cart-btn" style="flex:1;">
                                 <?php _e('カートに入れる', 'photo-purchase'); ?>
                             </button>
+                            <a id="ec-quickview-detail-link" href="#" class="button-secondary" style="flex:1; text-align:center; text-decoration:none; padding:12px; border:1px solid #ddd; border-radius:12px; font-weight:bold; color:#666; font-size:0.9rem; display:flex; align-items:center; justify-content:center; gap:5px;">
+                                <span class="dashicons dashicons-external" style="font-size:18px; width:18px; height:18px;"></span>
+                                <?php _e('詳細を見る', 'photo-purchase'); ?>
+                            </a>
                         </div>
                     </div>
                 </div>
@@ -548,3 +561,276 @@ function photo_purchase_gallery_shortcode($atts)
     return ob_get_clean();
 }
 add_shortcode('ec_gallery', 'photo_purchase_gallery_shortcode');
+
+/**
+ * Automatically render rich product detail on single photo_product pages
+ */
+function photo_purchase_single_product_content($content) {
+    if (!is_singular('photo_product')) {
+        return $content;
+    }
+
+    $post_id = get_the_ID();
+    
+    // Fetch prices and basic info
+    $enable_digital = get_option('photo_pp_enable_digital_sales', '1');
+    $p_digital = ($enable_digital === '1') ? get_post_meta($post_id, '_photo_price_digital', true) : 0;
+    if ($enable_digital === '1' && !$p_digital)
+        $p_digital = get_post_meta($post_id, '_photo_price', true);
+    
+    $p_l = get_post_meta($post_id, '_photo_price_l', true);
+    $is_sub = get_post_meta($post_id, '_photo_is_subscription', true) === '1';
+    $p_sub = $is_sub ? get_post_meta($post_id, '_photo_price_subscription', true) : 0;
+    
+    $is_sold_out = get_post_meta($post_id, '_photo_is_sold_out', true) === '1';
+    $manage_stock = get_post_meta($post_id, '_photo_manage_stock', true) === '1';
+    $stock_qty = intval(get_post_meta($post_id, '_photo_stock_qty', true));
+    if ($manage_stock && $stock_qty <= 0) {
+        $is_sold_out = true;
+    }
+
+    $use_variations = get_post_meta($post_id, '_photo_use_variations', true) === '1';
+    $variations_data = $use_variations ? get_post_meta($post_id, '_photo_variation_skus', true) : array();
+    
+    // Sold out check for variations
+    if ($use_variations && is_array($variations_data) && !empty($variations_data)) {
+        $all_vars_sold_out = true;
+        foreach ($variations_data as $v) {
+            if (intval($v['stock'] ?? 0) > 0) {
+                $all_vars_sold_out = false;
+                break;
+            }
+        }
+        $is_sold_out = $all_vars_sold_out;
+    }
+
+    $thumbnail = get_the_post_thumbnail_url($post_id, 'large');
+    $full_image = get_the_post_thumbnail_url($post_id, 'full');
+    $gallery_ids = get_post_meta($post_id, '_ec_gallery_ids', true);
+    $gallery_urls = [$full_image];
+    if ($gallery_ids) {
+        $ids = explode(',', $gallery_ids);
+        foreach ($ids as $id) {
+            $url = wp_get_attachment_image_url($id, 'large');
+            if ($url) $gallery_urls[] = $url;
+        }
+    }
+    
+    $gallery_json = htmlspecialchars(json_encode($gallery_urls), ENT_QUOTES, 'UTF-8');
+    $variations_json = htmlspecialchars(json_encode($variations_data), ENT_QUOTES, 'UTF-8');
+    $sku = get_post_meta($post_id, '_photo_sku', true);
+    $product_label = get_post_meta($post_id, '_photo_product_label', true);
+
+    ob_start();
+    ?>
+    <!-- Simple EC v5.1.0 -->
+    <div class="photo-item ec-single-product-container <?php echo $is_sold_out ? 'is-sold-out' : ''; ?>" 
+         data-id="<?php echo $post_id; ?>" 
+         data-description="" 
+         data-sku="<?php echo esc_attr($sku); ?>"
+         data-gallery='<?php echo $gallery_json; ?>'
+         data-sold-out="<?php echo $is_sold_out ? '1' : '0'; ?>"
+         data-manage-stock="<?php echo $manage_stock ? '1' : '0'; ?>"
+         data-stock-qty="<?php echo $stock_qty; ?>"
+         data-use-variations="<?php echo $use_variations ? '1' : '0'; ?>"
+         data-variations='<?php echo $variations_json; ?>'>
+        
+        <div class="ec-single-layout">
+            <!-- Left: Gallery -->
+            <div class="ec-single-left">
+                <div class="ec-single-main-image-wrap" style="position:relative;">
+                    <img id="ec-main-display-img" src="<?php echo esc_url($full_image); ?>" class="lightbox-trigger" style="width:100%; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.1); cursor:zoom-in;">
+                    <?php if ($product_label): 
+                        $label_color = get_post_meta($post_id, '_photo_product_label_color', true) ?: '#4f46e5';
+                    ?>
+                        <div class="pp-product-label" style="--label-color: <?php echo esc_attr($label_color); ?>; top:15px; left:15px; font-size:0.9rem; padding:6px 15px;"><?php echo esc_html($product_label); ?></div>
+                    <?php endif; ?>
+                    <?php if ($is_sold_out): ?>
+                        <div class="sold-out-badge" style="position: absolute; bottom: 15px; left: 15px; background: rgba(0,0,0,0.8); color: #fff; padding: 8px 20px; border-radius: 6px; font-weight: bold; font-size: 1.1rem; z-index: 10;">売り切れ</div>
+                    <?php endif; ?>
+                </div>
+                
+                <?php if (count($gallery_urls) > 1): ?>
+                <div class="ec-single-gallery-thumbs" style="display:flex; flex-wrap:wrap; gap:10px; margin-top:15px; padding-bottom:10px;">
+                    <?php foreach ($gallery_urls as $idx => $url): ?>
+                        <div class="ec-thumb-item <?php echo $idx === 0 ? 'is-active' : ''; ?>" style="width:70px; height:70px; flex-shrink:0; border-radius:8px; overflow:hidden; border:2px solid <?php echo $idx === 0 ? 'var(--pp-primary)' : 'transparent'; ?>; cursor:pointer; transition:all 0.2s;">
+                            <img src="<?php echo esc_url($url); ?>" data-full="<?php echo esc_url($url); ?>" style="width:100%; height:100%; object-fit:cover;">
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <script>
+                jQuery(document).ready(function($) {
+                    $('.ec-thumb-item').click(function() {
+                        var fullUrl = $(this).find('img').data('full');
+                        $('#ec-main-display-img').attr('src', fullUrl);
+                        $('.ec-thumb-item').css('border-color', 'transparent');
+                        $(this).css('border-color', 'var(--pp-primary)');
+                    });
+                });
+                </script>
+                <?php endif; ?>
+            </div>
+
+            <!-- Right: Details & Actions -->
+            <div class="ec-single-right">
+                <div class="ec-single-meta-top" style="margin-bottom:20px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <?php if ($sku): ?>
+                            <span style="font-size:0.8rem; color:#94a3b8; font-weight:600;">SKU: <?php echo esc_html($sku); ?></span>
+                        <?php endif; ?>
+                        <button class="fav-btn" data-id="<?php echo $post_id; ?>" style="position:static; background:#fff; border:1px solid #e2e8f0; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+                            <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                        </button>
+                    </div>
+                    <h1 class="ec-single-title" style="margin:0 0 15px; font-size:2rem; font-weight:900; line-height:1.2; color:#1e293b;"><?php the_title(); ?></h1>
+                    
+                    <div class="ec-single-price-wrap" style="margin-bottom:25px; padding:20px; background:#f8fafc; border-radius:15px; border:1px solid #f1f5f9;">
+                        <div class="photo-price-anim-wrap" style="font-size:2.5rem; font-weight:900; color:var(--pp-primary);">
+                            <span class="price-symbol">¥</span><span class="photo-price-val">0</span>
+                        </div>
+                        <?php if ($manage_stock && !$is_sold_out): ?>
+                            <div style="font-size:0.85rem; color:#64748b; margin-top:5px;">
+                                <span class="dashicons dashicons-archive" style="font-size:14px; width:14px; height:14px; vertical-align:middle;"></span>
+                                在庫状況: <strong>残り <?php echo $stock_qty; ?> 点</strong>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <div class="ec-single-purchase-options" style="background:#fff; border:1px solid #e2e8f0; border-radius:20px; padding:25px; box-shadow:0 10px 25px -5px rgba(0,0,0,0.05);">
+                    <?php if (!$use_variations): ?>
+                        <div class="format-selection" style="margin-bottom: 20px;">
+                            <label style="display:block; font-weight:800; font-size:0.9rem; color:#334155; margin-bottom:8px;">商品タイプを選択</label>
+                            <select class="photo-format" style="width: 100%; padding: 12px 15px; border-radius: 12px; border: 1px solid #cbd5e1; font-weight:600; cursor:pointer;">
+                                <?php if ($p_digital > 0): ?>
+                                    <option value="digital" data-price="<?php echo $p_digital; ?>">
+                                        <?php echo sprintf(__('ダウンロード - %d円', 'photo-purchase'), $p_digital); ?>
+                                    </option>
+                                <?php endif; ?>
+                                <?php if ($p_l > 0): ?>
+                                    <option value="l_size" data-price="<?php echo $p_l; ?>">
+                                        <?php echo sprintf(__('配送品 - %s円', 'photo-purchase'), number_format($p_l)); ?>
+                                    </option>
+                                <?php endif; ?>
+                                <?php if ($is_sub && $p_sub > 0): 
+                                    $interval_labels = ['day' => '日', 'week' => '週', 'month' => 'ヶ月', 'year' => '年'];
+                                    $sub_interval = get_post_meta($post_id, '_photo_sub_interval', true) ?: 'month';
+                                    $sub_interval_count = get_post_meta($post_id, '_photo_sub_interval_count', true) ?: 1;
+                                    $label = ($sub_interval_count > 1) ? $sub_interval_count . $interval_labels[$sub_interval] : $interval_labels[$sub_interval];
+                                    $sub_req = get_post_meta($post_id, '_photo_sub_requires_shipping', true) === '1' ? '1' : '0';
+                                    ?>
+                                    <option value="subscription" data-price="<?php echo $p_sub; ?>" data-is-sub="1" data-sub-requires-shipping="<?php echo $sub_req; ?>">
+                                        <?php echo sprintf(__('サブスクリプション (%s) - %s円', 'photo-purchase'), $label, number_format($p_sub)); ?>
+                                    </option>
+                                <?php endif; ?>
+                            </select>
+                        </div>
+                    <?php else: ?>
+                        <input type="hidden" class="photo-format" value="l_size" data-price="<?php echo $p_l ?: 0; ?>">
+                        
+                        <?php if (!empty($variations_data)): 
+                            $attr_groups = [];
+                            foreach ($variations_data as $v) {
+                                if (!empty($v['attrs']) && is_array($v['attrs'])) {
+                                    foreach ($v['attrs'] as $a) { $attr_groups[$a['name']][] = $a['value']; }
+                                }
+                            }
+                            foreach ($attr_groups as $name => $vals) { $attr_groups[$name] = array_unique($vals); }
+                        ?>
+                            <div class="ec-variation-selection-multi-wrap" style="margin-bottom:20px; padding:15px; background:#f1f5f9; border-radius:15px;">
+                                <label style="font-weight:800; font-size:0.9rem; color:#334155; display:block; margin-bottom:12px;">バリエーションを選択</label>
+                                <div class="ec-attribute-selects-grid" style="display:grid; gap:12px;">
+                                    <?php foreach ($attr_groups as $attr_name => $attr_values): ?>
+                                        <div class="ec-attr-row">
+                                            <div style="font-size:0.75rem; font-weight:700; color:#64748b; margin-bottom:4px;"><?php echo esc_html($attr_name); ?></div>
+                                            <select class="ec-attr-select" data-attr-name="<?php echo esc_attr($attr_name); ?>" style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1; font-size:0.9rem;">
+                                                <option value=""><?php echo sprintf(__('%sを選択', 'photo-purchase'), $attr_name); ?></option>
+                                                <?php foreach ($attr_values as $val): ?>
+                                                    <option value="<?php echo esc_attr($val); ?>"><?php echo esc_html($val); ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                                <input type="hidden" class="ec-variation-id-input" name="variation_id" value="">
+                                <div class="ec-variation-status-msg" style="margin-top:8px; font-size:0.8rem; font-weight:600; min-height:1.2em; color:var(--pp-primary);"></div>
+                            </div>
+                        <?php endif; ?>
+                    <?php endif; ?>
+
+                    <?php
+                    $custom_options = get_post_meta($post_id, '_photo_custom_options', true);
+                    if (is_array($custom_options) && !empty($custom_options)):
+                        $grouped_options = array();
+                        foreach ($custom_options as $opt) {
+                            $g = !empty($opt['group']) ? $opt['group'] : 'オプション';
+                            if (!isset($grouped_options[$g])) { $grouped_options[$g] = array('items' => array(), 'required' => false); }
+                            $grouped_options[$g]['items'][] = $opt;
+                            if (!empty($opt['required']) && $opt['required'] === '1') { $grouped_options[$g]['required'] = true; }
+                        }
+                        echo '<div class="custom-options-wrap" style="margin-bottom:25px; border-top:1px solid #f1f5f9; padding-top:20px;">';
+                        foreach ($grouped_options as $group_name => $group_data):
+                            $is_required = $group_data['required'];
+                            ?>
+                            <div class="attribute-group-wrap" data-required="<?php echo $is_required ? '1' : '0'; ?>" data-group-name="<?php echo esc_attr($group_name); ?>" style="margin-bottom:15px;">
+                                <div style="font-weight:800; margin-bottom:8px; font-size:0.85rem; color:#475569;">
+                                    <?php echo esc_html($group_name); ?>
+                                    <?php if ($is_required): ?>
+                                        <span style="background:#ef4444; color:#fff; font-size:10px; padding:2px 8px; border-radius:4px; margin-left:8px; vertical-align:middle; font-weight:bold;">必須</span>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="custom-options-group" style="display:flex; flex-wrap:wrap; gap:10px;">
+                                    <?php foreach ($group_data['items'] as $opt): 
+                                        $type = $opt['type'] ?? 'radio';
+                                        $price = intval($opt['price'] ?? 0);
+                                        $price_label = ($price > 0) ? " (+" . number_format($price) . "円)" : "";
+                                        $input_name = 'custom_opt_' . md5($group_name);
+                                    ?>
+                                        <label style="cursor:pointer; background:#f8fafc; padding:8px 15px; border:1px solid #e2e8f0; border-radius:10px; font-size:0.85rem; display:flex; align-items:center; gap:8px; transition:all 0.2s;">
+                                            <input type="<?php echo esc_attr($type); ?>" name="<?php echo esc_attr($input_name); ?>" value="<?php echo esc_attr($price); ?>" data-name="<?php echo esc_attr($opt['name']); ?>" data-group="<?php echo esc_attr($group_name); ?>" class="custom-opt-check" <?php if($type === 'radio' && count($group_data['items']) === 1) echo 'checked'; ?>>
+                                            <span><?php echo esc_html($opt['name'] . $price_label); ?></span>
+                                        </label>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        <?php endforeach;
+                        echo '</div>';
+                    endif;
+                    ?>
+
+                    <div style="display:flex; gap:15px; align-items:center;">
+                        <div class="quantity-select" style="display:flex; align-items:center; background:#f1f5f9; border-radius:12px; padding:5px 15px;">
+                            <label style="font-size:0.8rem; font-weight:bold; color:#64748b; margin-right:10px;">数量</label>
+                            <input type="number" class="photo-qty" value="1" min="1" style="width:60px; background:transparent; border:none; padding:8px; font-weight:bold; font-size:1rem; outline:none;">
+                        </div>
+                        <button class="add-to-cart-btn button-primary" data-id="<?php echo $post_id; ?>" <?php echo $is_sold_out ? 'disabled' : ''; ?> style="flex:1; padding:15px; border-radius:12px; font-size:1.1rem; font-weight:bold; cursor:pointer; background:var(--pp-primary); color:#fff; border:none; box-shadow:0 10px 15px -3px rgba(var(--pp-primary-rgb), 0.3);">
+                            <?php echo $is_sold_out ? __('売り切れ', 'photo-purchase') : __('カートに入れる', 'photo-purchase'); ?>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="ec-single-description-full prose" style="margin-top:60px; padding-top:40px; border-top:1px solid #e2e8f0; color:#475569; line-height:1.8; font-size:1.1rem;">
+            <?php echo $content; ?>
+        </div>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+add_filter('the_content', 'photo_purchase_single_product_content', 20);
+
+/**
+ * Archive Template Override
+ */
+function photo_purchase_archive_template($template)
+{
+    if (is_post_type_archive('photo_product') || is_tax('photo_event')) {
+        $new_template = PHOTO_PURCHASE_PATH . 'includes/templates/archive-product.php';
+        if (file_exists($new_template)) {
+            return $new_template;
+        }
+    }
+    return $template;
+}
+add_filter('template_include', 'photo_purchase_archive_template', 99);

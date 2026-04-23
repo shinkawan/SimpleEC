@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Simple EC
  * Description: 写真・デジタル・物販まで対応し、SKU管理・会員割引・かご落ち対策・インボイス対応などを備えた高機能ECプラグイン。Stripe、PayPay、代引き、銀行振込に対応。
- * Version: 5.0.0
+ * Version: 5.1.0
  * Author: アートフレア株式会社
  * Author URI: https://www.artflair.co.jp/
  * Text Domain: photo-purchase
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define constants
-define('PHOTO_PURCHASE_VERSION', '5.0.0');
+define('PHOTO_PURCHASE_VERSION', '5.1.0');
 define('PHOTO_PURCHASE_PATH', plugin_dir_path(__FILE__));
 define('PHOTO_PURCHASE_URL', plugin_dir_url(__FILE__));
 
@@ -178,19 +178,20 @@ function photo_purchase_register_post_type()
 
 	$args = array(
 		'labels' => $labels,
-		'public' => false,
-		'publicly_queryable' => false,
+		'public' => true,
+		'publicly_queryable' => true,
 		'show_ui' => true,
 		'show_in_menu' => true,
 		'show_in_rest' => true,
 		'query_var' => true,
 		'capability_type' => 'post',
-		'has_archive' => false,
+		'has_archive' => true,
 		'hierarchical' => false,
 		'menu_position' => 5,
 		'supports' => array('title', 'editor', 'thumbnail', 'page-attributes'),
 		'menu_icon' => 'dashicons-cart',
 		'exclude_from_search' => true,
+		'rewrite' => array('slug' => 'item', 'with_front' => false),
 	);
 
 	register_post_type('photo_product', $args);
@@ -202,6 +203,7 @@ function photo_purchase_register_post_type()
 		'rewrite' => array('slug' => 'photo-event'),
 		'hierarchical' => true,
 		'show_admin_column' => true,
+		'show_in_rest' => true,
 	));
 }
 add_action('init', 'photo_purchase_register_post_type');

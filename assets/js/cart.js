@@ -379,10 +379,12 @@ jQuery(document).ready(function ($) {
         var description = $item.data('description');
         var gallery = $item.data('gallery');
         var sku = $item.data('sku');
+        var productUrl = $item.data('url');
         
         $('#lightbox-img').attr('src', gallery[0]);
         $('#ec-quickview-title').text(title);
         $('#ec-quickview-description').html(description);
+        $('#ec-quickview-detail-link').attr('href', productUrl);
         
         var $qvSku = $('#ec-quickview-sku');
         if (sku) {
@@ -940,7 +942,7 @@ jQuery(document).ready(function ($) {
     });
 
     // --- カート追加（通常） ---
-    $('.photo-purchase-gallery').on('click', '.add-to-cart-btn', function (e) {
+    $(document).on('click', '.photo-item .add-to-cart-btn', function (e) {
         e.preventDefault();
         var $item = $(this).closest('.photo-item');
         if ($item.data('sold-out') == '1') { alert('この商品は売り切れです。'); return; }
